@@ -1,629 +1,385 @@
 package frc.robot;
 
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import com.ctre.phoenix.motorcontrol.ControlMode;
-import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
-import com.ctre.phoenix.motorcontrol.SensorCollection;
-import com.revrobotics.CANSparkMax;
-import com.revrobotics.CANSparkMaxLowLevel.MotorType;
-import edu.wpi.first.wpilibj.*;
-
-import edu.wpi.first.wpilibj.GenericHID.Hand;
+import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
-import edu.wpi.first.wpilibj.DoubleSolenoid.Value;
-import edu.wpi.cscore.UsbCamera;
-import edu.wpi.first.cameraserver.CameraServer;
-// import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj.util.Color;
+import edu.wpi.first.wpilibj.*;
+import edu.wpi.first.wpilibj.RobotController;
+
+// Below: Limelight Imports
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableEntry;
+import edu.wpi.first.networktables.NetworkTableInstance;
+
+// Color sensor imports
+import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj.util.Color;
+import com.revrobotics.ColorSensorV3;
+
 import java.lang.reflect.InvocationTargetException;
-// import edu.wpi.first.cameraserver.*;
-import com.zephyr.pixy.*;
-import frc.robot.Toggle;
-import io.github.pseudoresonance.pixy2api.Pixy2;
-import io.github.pseudoresonance.pixy2api.Pixy2CCC;
-import io.github.pseudoresonance.pixy2api.links.SPILink;
-//import sun.tools.jconsole.inspector.Utils;
-import frc.robot.PairOfMotors;
-import java.util.List;
 
-// import javax.lang.model.util.ElementScanner6;
+// Talon SRX and FX imports 
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.can.TalonSRX;
+import com.ctre.phoenix.motorcontrol.can.TalonFX;
+import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 
-import java.util.ArrayList;
-
-
-/*	
-
-FIRST Robotics Team 1626
-<Insert robot name here>
-By Daniel Lucash, Christopher Nokes, Christian Muce, Benjamin Ulrich, and SJHS Falcon Robotics
-
-*/
-
+/**
+ * The VM is configured to automatically run this class, and to call the
+ * functions corresponding to each mode, as described in the TimedRobot
+ * documentation. If you change the name of this class or the package after
+ * creating this project, you must also update the build.gradle file in the
+ * project.
+ */
 public class Robot extends TimedRobot {
-
-	private XboxController xbox;
-	private Joystick driverLeft;
-	private Joystick driverRight;
-
-	private DriverStation driverStation;
-
-	private SpeedController frontLeftSpeed;
-	private SpeedController frontRightSpeed;
-	private SpeedController backLeftSpeed;
-	private SpeedController backRightSpeed;
-	private SpeedControllerGroup leftSpeed;
-	private SpeedControllerGroup rightSpeed;
-	private DifferentialDrive drive;
-
-	private WPI_TalonSRX ballHolder;
-	private WPI_TalonSRX elevator;
-	private WPI_TalonSRX leftArm;
-	private WPI_TalonSRX rightArm;
-	private WPI_TalonSRX frontJumper;
-	private WPI_TalonSRX rearJumper;
-	private SpeedControllerGroup jumperSpeed;
-
-//	private TalonSRX inOutMotor1;
-	private DoubleSolenoid claw;
-	private DoubleSolenoid boost;
-	int autoLoopCounter;
-	public String gameData;
-	private int startingPosition = 1;
-	private ActionRecorder actions;
-//	private Pixy pixycam;
-
-	private Compressor compressor;
-	private boolean compressorEnabled;
-	private AnalogInput pressureSensor;
-
-	private UsbCamera camera;
-	private CameraServer cameraServer;
-	private double previousElevator;
-
-	private int ManualElevator = 0;
-	private int RecordSpeed = 0;
-	private int AxisRecord = 0;
-
-	private double  SpeedVariable = 1;
-
-	private List<PairOfMotors> motorPairList;
-
-	private boolean hasPixy = true;
-	private Pixy2CCC tracker;
-	private Pixy2 pixy;
-
-	private int liftRecord;
-
-	Toggle backwards;
-	Toggle doMotorBreakIn = new Toggle();
-	Toggle clawState;
-	Toggle boostState;
-	Toggle dpadState;
-	Toggle ballState;
-
-	private int normArmCurrent=15;
-	private int maxArmCurrent=35;
-	private int armCurrent=normArmCurrent;
-
-	private final int jumperOutTarget = 3300;
-	private final int jumperInTarget = 0;
-
-
-	@Override
-	public void robotInit() {
-
-		System.out.println("Starting the Deep Space Robot");
-
-		cameraServer = CameraServer.getInstance();
-		camera = new UsbCamera("USB Camera 0", 1);
-		cameraServer.addCamera(camera);
-		cameraServer.startAutomaticCapture();
-
-		driverStation = DriverStation.getInstance();
-
-		driverLeft = new Joystick(0);
-		driverRight = new Joystick(1);
-		xbox = new XboxController(2);
-		backwards = new Toggle();
-		clawState = new Toggle();
-		boostState = new Toggle();
-		dpadState = new Toggle();
-		ballState = new Toggle();
-
-		System.out.println("initializing actions...");
-		actions = new ActionRecorder().
-				setMethod(this, "robotOperation", DriverInput.class).
-				setUpButton(xbox, 1).
-				setDownButton(xbox, 2).
-				setRecordButton(xbox, 3);
-		
-		System.out.println("initializing buttons...");
-		DriverInput.nameInput("Driver-Left");
-		DriverInput.nameInput("Driver-Right");
-		DriverInput.nameInput("Driver-Left-Trigger");
-		DriverInput.nameInput("Driver-Right-Trigger");
-		DriverInput.nameInput("Operator-Left-Stick");
-		DriverInput.nameInput("Operator-Left-Bumper");
-		DriverInput.nameInput("Operator-Left-Trigger");
-		DriverInput.nameInput("Operator-Right-Stick");
-		DriverInput.nameInput("Operator-Right-Bumper");
-		DriverInput.nameInput("Operator-Right-Trigger");
-		DriverInput.nameInput("Operator-X-Button");
-		DriverInput.nameInput("Operator-Y-Button");
-		DriverInput.nameInput("Operator-A-Button");
-		DriverInput.nameInput("Operator-B-Button");
-		DriverInput.nameInput("Operator-Start-Button");
-		DriverInput.nameInput("Operator-Back-Button");
-		DriverInput.nameInput("Elevator-Forward");
-		DriverInput.nameInput("Elevator-Back");
-		DriverInput.nameInput("Operator-DPad");
-		DriverInput.nameInput("Driver-Left-8");
-		DriverInput.nameInput("Operator-Right-Stick");
-
-		frontLeftSpeed		= new CANSparkMax(14, MotorType.kBrushless);
-		backLeftSpeed		= new CANSparkMax(15, MotorType.kBrushless);
-		frontRightSpeed		= new CANSparkMax(20, MotorType.kBrushless);
-		backRightSpeed		= new CANSparkMax(21, MotorType.kBrushless);
-
-		leftArm				= new WPI_TalonSRX(2); 
-		rightArm			= new WPI_TalonSRX(3);
-
-		elevator			= new WPI_TalonSRX(6);
-
-		ballHolder			= new WPI_TalonSRX(7);
-
-		frontJumper			= new WPI_TalonSRX(12);
-		rearJumper			= new WPI_TalonSRX(13);
-
-		compressor = new Compressor();
-		pressureSensor = new AnalogInput(0);
-
-		ManualElevator = 0;
-		
-		claw = new DoubleSolenoid(2, 3);
-		claw.set(Value.kForward);
-
-		boost = new DoubleSolenoid(0, 1);
-		boost.set(Value.kReverse);
-
-		leftSpeed = new SpeedControllerGroup(frontLeftSpeed, backLeftSpeed);
-		rightSpeed = new SpeedControllerGroup(frontRightSpeed, backRightSpeed);
-		drive = new DifferentialDrive(leftSpeed, rightSpeed);
-
-		jumperSpeed = new SpeedControllerGroup(frontJumper, rearJumper);
-
-		ballHolder.setInverted(true);
-//		frontElevator.follow(backElevator);
-//		double value = 1; 
-//		backElevator.configSetParameter(ParamEnum.eClearPositionOnQuadIdx, value, 0x00, 0x00, 10);
-//		backElevator.configSetParameter(ParamEnum.eClearPositionOnLimitF, value, 0x00, 0x00, 10);
-//		backElevator.configSetParameter(ParamEnum.eClearPositionOnLimitR, value, 0x00, 0x00, 10);= 
-
-
-		motorPairList = new ArrayList<PairOfMotors>();
-
-		motorPairList.add(new PairOfMotors("LeftDrive", frontLeftSpeed, 14, backLeftSpeed, 15));
-		motorPairList.add(new PairOfMotors("RightDrive", frontRightSpeed, 0, backRightSpeed, 1));
-		motorPairList.add(new PairOfMotors("ArmDrive", 2,3));
-		motorPairList.add(new PairOfMotors("Climb", 12,13));
-
-//		for (PairOfMotors motorPair : motorPairList) {
-//            SmartDashboard.putString(
-//            "Motors/" + motorPair.getName(), 
-//            "No motor current differences detected");
-//		}
-	
-		elevator.configNominalOutputForward(0, 30);
-		elevator.configNominalOutputReverse(0, 30);
-		elevator.configPeakOutputForward(1, 30);
-		elevator.configPeakOutputReverse(-1, 30);
-		elevator.configAllowableClosedloopError(0, 0, 30);
-
-		/* Config Position Closed Loop gains in slot0, tsypically kF stays zero. */
-
-		SensorCollection sc = new SensorCollection(elevator);
-
-		elevator.config_kF(0, 0.1, 30);
-		elevator.config_kP(0, 0.1, 30);
-		elevator.config_kI(0, 0, 30);
-		elevator.config_kD(0, 0, 30);
-		elevator.setSensorPhase(false);
-		sc.setQuadraturePosition(0, 30);
-	}
-
-	@Override
-	public void robotPeriodic() {
-		double pressure = (250.0 * (pressureSensor.getVoltage() / 5.0)) - 13;
-		SmartDashboard.putString("DB/String 4", String.format("%.0f", pressure));
-
-		CANSparkMax[] rightDriveControllers = {(CANSparkMax)frontRightSpeed, (CANSparkMax)backRightSpeed};
-
-		StringBuffer str = new StringBuffer();
-		for (CANSparkMax controller : rightDriveControllers) {
-			double temp=controller.getMotorTemperature();
-			int id=controller.getDeviceId();
-			if (str.length() > 0) {
-				str.append(", ");
-			}
-			str.append(String.format("%.0f(%d)", temp, id-20));
-		}
-		SmartDashboard.putString("DB/String 2", str.toString());
-
-		CANSparkMax[] leftDriveControllers = {(CANSparkMax)frontLeftSpeed, (CANSparkMax)backLeftSpeed};
-
-		str = new StringBuffer();
-
-		for (CANSparkMax motor : leftDriveControllers) {
-			double temp=motor.getMotorTemperature();
-			int id=motor.getDeviceId();
-			if (str.length() > 0) {
-				str.append(", ");
-			}
-			str.append(String.format("%.0f(%d)", temp, id));
-		}
-		SmartDashboard.putString("DB/String 3", str.toString());
-	}
-
-
-	@Override
-	public void autonomousInit() {
-		
-		autoLoopCounter = 0;
-		gameData = DriverStation.getInstance().getGameSpecificMessage();
-		actions.autonomousInit("LLL");
-
-		ballState.setState(false);
-  	}
-
-	@Override
-	public void autonomousPeriodic() {
-	
-		boolean doAutonomous = false;
-		try{
-			if ( doAutonomous && (actions != null) && actions.hasInputs() ) {
-				actions.longPlayback(this, -1);
-			}
-			else {
-				teleopPeriodic();
-			}
-		}catch (Exception e) { 
-			System.out.println("AP: " + e.toString());
-			e.printStackTrace(System.out);
-		}
-
-  	} 
-
-	@Override
-	public void teleopInit() {
-		DriverInput.setRecordTime();
-		actions.teleopInit();
-
-		int jumpPosition = ((WPI_TalonSRX)frontJumper).getSelectedSensorPosition();
-		System.out.println("Jumper position is: " + jumpPosition);
-
-		ballState.setState(true);
-	}
-
-	@Override
-	public void teleopPeriodic() {
-
-		RobotStopWatch watch = new RobotStopWatch("teleopPeriodic");
-
-		double matchTime = driverStation.getMatchTime();
-		boolean opControl = driverStation.isOperatorControl();
-
-//		SmartDashboard.putString("DB/String 2", String.format("%.1f %s", matchTime, opControl?"T":"A"));
-		if (opControl && (matchTime < 30.0)) {
-			if (armCurrent < maxArmCurrent) {
-				rightArm.configContinuousCurrentLimit(maxArmCurrent, 30);
-				leftArm.configContinuousCurrentLimit(maxArmCurrent, 30);
-				armCurrent = maxArmCurrent;
-			}
-		}
-
-		if (opControl && (matchTime < 20) && (matchTime > 0)) {
-			if (compressorEnabled) {
-				compressor.stop();
-				compressorEnabled=false;
-				System.out.println("Stopped Compressor at " + matchTime);
-			}
-
-		}
-
-
-//		SmartDashboard.putString("DB/String 3", String.valueOf(armCurrent));
-	
-		try {
-			actions.input(new DriverInput()
-				.withInput("Operator-X-Button",		xbox.getXButton()) // used - lift movement
-				.withInput("Operator-Y-Button",		xbox.getYButton()) // used - claw
-				.withInput("Operator-A-Button", 	xbox.getAButton()) // used - lift movement
-				.withInput("Operator-B-Button",		xbox.getBButton()) // used - lift movement
-				.withInput("Operator-Start-Button",	xbox.getRawButton(8)) //  boost
-				.withInput("Operator-Back-Button",	xbox.getRawButton(7))
-				.withInput("Elevator-Forward",  	xbox.getTriggerAxis(Hand.kLeft))	// used - elevator back
-				.withInput("Elevator-Back",			xbox.getTriggerAxis(Hand.kRight))	// used - elevator forward
-				.withInput("Operator-DPad",			xbox.getPOV()) // used
-				.withInput("Driver-Left", 			driverLeft.getRawAxis(1)) // used - drives left side
-				.withInput("Driver-Right", 			driverRight.getRawAxis(1)) // used - drives right side
-				.withInput("Driver-Left-Trigger", 	driverLeft.getRawButton(1))
-				.withInput("Driver-Right-Trigger", 	driverRight.getRawButton(1))
-				.withInput("Operator-Left-Bumper",	xbox.getBumper(Hand.kLeft)) // used - ball scoop
-				.withInput("Operator-Right-Bumper", xbox.getBumper(Hand.kRight)) // used - ball scoop
-				.withInput("Driver-Left-8", 		driverLeft.getRawButton(8)) // used - enables backwards
-				.withInput("Driver-Left-7", 		driverLeft.getRawButton(7)) // used - speed changer one
-				.withInput("Driver-Left-6", 		driverLeft.getRawButton(6)) // used - speed changer two
-				.withInput("Operator-Left-Stick",	xbox.getY(Hand.kLeft)) // used - arm movement
-				.withInput("Operator-Right-Stick", xbox.getRawButton(10))
-			);	
-		
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
-		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
-		} catch (InvocationTargetException e) {
-			e.printStackTrace();
-		}
-
-//		System.err.println(watch.toString());
-		
-		// pixycam.getAllDetectedObjects();
-		
-	}
-
-
-	public void disabledInit() {
-		actions.disabledInit();
-
-		sparkDiagnostics((CANSparkMax) frontLeftSpeed);
-		sparkDiagnostics((CANSparkMax) backLeftSpeed);
-
-
-		sparkDiagnostics((CANSparkMax) frontRightSpeed);
-		sparkDiagnostics((CANSparkMax) backRightSpeed);
-
-		leftArm.configContinuousCurrentLimit(normArmCurrent, 30);
-		rightArm.configContinuousCurrentLimit(normArmCurrent, 30);
-		armCurrent=normArmCurrent;
-		leftArm.enableCurrentLimit(true);
-		rightArm.enableCurrentLimit(true);
-
-		for (PairOfMotors pair : motorPairList) {
-			pair.reset();
-		}
-
-		compressor.start();
-		compressorEnabled=true;
-
-		liftRecord=0;
-
-
-	}
-
-	public void disabledPeriodic() {
-		actions.disabledPeriodic();
-
-
-	}
-
-	public void robotOperation(DriverInput input) {
-		
-		RobotStopWatch watch = new RobotStopWatch("robotOperation");
-		
-		double leftAxis = SpeedVariable * input.getAxis("Driver-Left");
-		double rightAxis = SpeedVariable * input.getAxis("Driver-Right");
-		leftAxis = Math.abs(Math.pow(leftAxis, 3)) * leftAxis/Math.abs(leftAxis);
-		rightAxis = Math.abs(Math.pow(rightAxis, 3)) * rightAxis/Math.abs(rightAxis);
-
-		backwards.input(input.getButton("Driver-Left-8"));
-		SmartDashboard.putBoolean("Backwards State", backwards.getState());
-
-		if (!backwards.getState()) drive.tankDrive(-1 * leftAxis, -1 * rightAxis, false);
-		else drive.tankDrive(rightAxis, leftAxis, false);
-
-//		SmartDashboard.putString("DB/String 0", Double.toString(DriverStation.getInstance().getMatchTime()));
-
-/*		
-		double leftAxisRecord = input.getAxis("Driver-Left");
-		double rightAxisRecord = input.getAxis("Driver-Right");
-		if(Math.abs(leftAxisRecord +rightAxisRecord) >= 1.2) {
-			AxisRecord = 0;
-		} else {
-			AxisRecord = 1;
-		}
-		if(RecordSpeed == 1) {
-			if(AxisRecord == 1) {
-				SpeedVariable = 1;
-			} else {
-				SpeedVariable = .65;
-			}
-		}
-		if(input.getButton("Driver-Left-6")) {
-			SpeedVariable = .65;
-			RecordSpeed = 1;
-		}
-		if(input.getButton("Driver-Left-7")) {
-			SpeedVariable = 1;
-			RecordSpeed = 0;
-		}
-*/
-// Above code is for unused drive train speed control
-
-	double elevatorAxis = input.getAxis("Elevator-Forward") - input.getAxis("Elevator-Back");
-		if (Math.abs(elevatorAxis) > 0.10) {
-			ManualElevator = 1;
-//			if (Math.abs(previousElevator) < 0.10) elevatorBrake.set (Value.kForward);
-			elevator.set(ControlMode.PercentOutput, elevatorAxis);
-//			SmartDashboard.putString("Elevator/motor", "%" + elevatorAxis);
-		} else {
-			if(ManualElevator == 1) {
-//			elevatorBrake.set(Value.kReverse);
-			elevator.set(ControlMode.PercentOutput, 0);
-//			SmartDashboard.putString("Elevator/motor", "%" + 0);
-			}
-		}
-
-		previousElevator = elevatorAxis;
-//		SmartDashboard.putString("DB/String 0", Double.toString(DriverStation.getInstance().getMatchTime()));
-
-		int dpadAxis = (int) input.getAxis("Operator-DPad");
-		if(dpadAxis == 0) {
-			ManualElevator = 0;
-			elevator.set(ControlMode.Position, 0);
-		}
-		if(dpadAxis == 90) {
-			ManualElevator = 0;
-			elevator.set(ControlMode.Position, -6924);
-		}
-		if(dpadAxis == 180) {
-			ManualElevator = 0;
-			elevator.set(ControlMode.Position, -9589);
-		}
-
-		if(input.getAxis("Operator-Left-Stick") != 0) {
-			leftArm.set(input.getAxis("Operator-Left-Stick") * 0.75);
-			rightArm.set(input.getAxis("Operator-Left-Stick") * -0.75);
-		}
-		else {
-			leftArm.set(0);
-			rightArm.set(0);
-		}
-
-		clawState.input(input.getButton("Operator-Y-Button"));
-		if(clawState.getState()) {   
-			claw.set(Value.kReverse);
-		}
-		else {
-			claw.set(Value.kForward);
-		}
-		
-		boostState.input(input.getButton("Operator-Start-Button"));
-		if(boostState.getState()) {
-			boost.set(Value.kForward);
-			liftRecord = 0;
-		}
-		else {
-			if (liftRecord == 0) {
-				boost.set(Value.kReverse);
-			}
-		}
-
-		if(input.getButton("Operator-Right-Bumper")) {
-			liftRecord = 0;
-			int jumperPosition = ((WPI_TalonSRX)rearJumper).getSelectedSensorPosition();
-			if (jumperPosition < (jumperOutTarget - 100)) {
-				jumperSpeed.set(-1.0);
-			} else if (jumperPosition < (jumperOutTarget - 50)) {
-				jumperSpeed.set(-0.20);
-			} else if (jumperPosition > (jumperOutTarget + 10)){
-				jumperSpeed.set(0.20);
-			} else {
-				jumperSpeed.set(0);
-			}
-		}
-		else if(input.getButton("Operator-Left-Bumper")) {
-			liftRecord = 0;
-			int jumperPosition = ((WPI_TalonSRX)rearJumper).getSelectedSensorPosition();
-			if (jumperPosition > (jumperInTarget + 100)) {
-				jumperSpeed.set(1.0);
-			} else if (jumperPosition > (jumperInTarget + 50)) {
-				jumperSpeed.set(0.20);
-			} else if (SmartDashboard.getBoolean("DB/Button 1", false)) {
-				jumperSpeed.set(0.20);
-			} else if (jumperPosition < (jumperInTarget - 10)){
-				jumperSpeed.set(0.-20);
-			} else {
-				jumperSpeed.set(0);
-			}
-		}
-		else {
-			if(liftRecord == 0) {
-				jumperSpeed.set(0.0);
-			}
-		}
-		
-		SmartDashboard.putString("Elevator Sensor Position", "" + elevator.getSelectedSensorPosition(0));
-
-		ballState.input(input.getButton("Operator-Right-Stick"));
-			
-		if (input.getButton("Operator-X-Button")) {
-			ballHolder.set(1.0);
-		} else if (input.getButton("Operator-A-Button")) {
-			ballHolder.set(-.50);
-		} else if (input.getButton("Operator-B-Button")) {
-			ballHolder.set(-.70);
-		} else {
-			double ballSpeed=0.0;
-			if (ballState.getState()) {
-				ballSpeed=0.15;
-			} else {
-				ballSpeed=0.0;
-			}
-			ballHolder.set(ballSpeed);
-		}
-
-		for (PairOfMotors motorPair : motorPairList) {
-			motorPair.isCurrentDifferent();
-		}
-
-		if((dpadAxis >= 225) && (dpadAxis <= 315)){
-			if(liftRecord == 0) {
-				liftRecord = 1;
-				jumperSpeed.set(-1);
-			}
-		
-			if(liftRecord == 1) {
-				if((rearJumper.getSelectedSensorPosition() > 300) && (rearJumper.getSelectedSensorPosition() < 320)) {
-					boost.set(Value.kForward);
-					liftRecord = 2;
-				}
-			}
-			if(rearJumper.getSelectedSensorPosition() > 3000) {
-				if(liftRecord == 2) {
-					jumperSpeed.set(0);
-					boost.set(Value.kReverse);
-					liftRecord = 3;
-				}
-			}
-		} else {
-			if (liftRecord > 0) {
-				jumperSpeed.set(0);
-				liftRecord = 0;
-			}
-		}
-
-	}
-
-//	double gay = frontLeftSpeed.get();
-	
-//		System.err.println(watch.toString());
-	
-
-	public void sparkDiagnostics(CANSparkMax controller) {
-
-		int canID = controller.getDeviceId();
-
-		System.err.println("Checking faults in Spark " + canID);
-
-		for (CANSparkMax.FaultID c : CANSparkMax.FaultID.values()) {
-			if (controller.getFault(c)) {
-				System.err.println("Spark " + canID + " " + c.toString() + " SET");
-			}
-
-			if (controller.getStickyFault(c)) {
-				System.err.println("Spark " + canID + " " + c.toString() + " STICKY");
-			}
-		}
-	}
-
-	public void testInit() {
-		((WPI_TalonSRX)rearJumper).setSelectedSensorPosition(0);
-	}
-
-	@Override
-	public void testPeriodic() {
-		int jumpPosition = ((WPI_TalonSRX)rearJumper).getSelectedSensorPosition();
-		System.err.println("Jumper position is: " + jumpPosition + "\n");
-
-	}
-
+  private static final String kDefaultAuto = "Default";
+  private static final String kCustomAuto = "My Auto";
+  private String m_autoSelected;
+  private final SendableChooser<String> m_chooser = new SendableChooser<>();
+
+  // public static OI m_oi;
+  private WPI_TalonSRX RobotShooter;
+
+  // defining controllers
+  private XboxController xbox;
+  private Joystick driverLeft;
+  private Joystick driverRight;
+  private DriverStation driverStation;
+
+  // defining tank drive
+  private TalonFX frontLeftSpeed;
+  private TalonFX frontRightSpeed;
+  private TalonFX backLeftSpeed;
+  private TalonFX backRightSpeed;
+  private double tankVar = 1;
+  private boolean toggleLT;
+  private boolean toggleRT;
+
+  // defining color sensor
+  private TalonSRX colorMotor;
+
+  // belt
+  private TalonSRX beltMotor;
+
+  // defining Limelight Variables
+  NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
+  NetworkTableEntry tx = table.getEntry("tx");
+  NetworkTableEntry ty = table.getEntry("ty");
+  NetworkTableEntry ta = table.getEntry("ta");
+
+  // defining color sensor variables
+  private final I2C.Port i2cPort = I2C.Port.kOnboard;
+  private final ColorSensorV3 m_colorSensor = new ColorSensorV3(i2cPort);
+  private int color = 0;
+  private boolean toggleX;
+  private int colorrecord = 0;
+  private String fieldColor = DriverStation.getInstance().getGameSpecificMessage();
+
+  // action recorder
+  private ActionRecorder actions;
+
+  // toggles
+
+  /**
+   * This function is run when the robot is first started up and should be used
+   * for any initialization code.
+   */
+  @Override
+  public void robotInit() {
+    m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
+    m_chooser.addOption("My Auto", kCustomAuto);
+    SmartDashboard.putData("Auto choices", m_chooser);
+
+    // drive train assignments
+    frontLeftSpeed = new TalonFX(1);
+    frontRightSpeed = new TalonFX(2);
+    backLeftSpeed = new TalonFX(3);
+    backRightSpeed = new TalonFX(4);
+
+    // color sensor
+    colorMotor = new TalonSRX(5);
+
+    // I beat my kids with a
+    beltMotor = new TalonSRX(6);
+
+    // controller and joystick init
+    driverLeft = new Joystick(0);
+    driverRight = new Joystick(1);
+    xbox = new XboxController(2);
+
+    // input declare
+    DriverInput.nameInput("LDrive");
+    DriverInput.nameInput("RDrive");
+    DriverInput.nameInput("AButton");
+
+    // toggle declare
+    toggleX = true;
+    toggleLT = true;
+    toggleRT = true;
+
+    // action recorder setup
+    actions = new ActionRecorder().setMethod(this, "robotOperation", DriverInput.class).setUpButton(xbox, 1)
+        .setDownButton(xbox, 2).setRecordButton(xbox, 3);
+  }
+
+  /**
+   * This function is called every robot packet, no matter the mode. Use this for
+   * items like diagnostics that you want ran during disabled, autonomous,
+   * teleoperated and test.
+   *
+   * <p>
+   * This runs after the mode specific periodic functions, but before LiveWindow
+   * and SmartDashboard integrated updating.
+   */
+  @Override
+  public void robotPeriodic() {
+    // limelight variable check
+    double x = tx.getDouble(0.0);
+    double y = ty.getDouble(0.0);
+    double area = ta.getDouble(0.0);
+
+    // limelight target distance from crosshair in pixels
+    double xydistance = Math.sqrt(x * x + y * y);
+
+    // pushing limelight vars
+    SmartDashboard.putNumber("LimelightX", x);
+    SmartDashboard.putNumber("LimelightY", y);
+    SmartDashboard.putNumber("LimelightArea", area);
+
+    // defining color vars
+    Color detectedColor = m_colorSensor.getColor();
+    SmartDashboard.putNumber("Red", detectedColor.red);
+    SmartDashboard.putNumber("Green", detectedColor.green);
+    SmartDashboard.putNumber("Blue", detectedColor.blue);
+  }
+
+  /**
+   * This autonomous (along with the chooser code above) shows how to select
+   * between different autonomous modes using the dashboard. The sendable chooser
+   * code works with the Java SmartDashboard. If you prefer the LabVIEW Dashboard,
+   * remove all of the chooser code and uncomment the getString line to get the
+   * auto name from the text box below the Gyro
+   *
+   * <p>
+   * You can add additional auto modes by adding additional comparisons to the
+   * switch structure below with additional strings. If using the SendableChooser
+   * make sure to add them to the chooser code above as well.
+   */
+  @Override
+  public void autonomousInit() {
+    m_autoSelected = m_chooser.getSelected();
+    // m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
+    System.out.println("Auto selected: " + m_autoSelected);
+  }
+
+  /**
+   * This function is called periodically during autonomous.
+   */
+  @Override
+  public void autonomousPeriodic() {
+    switch (m_autoSelected) {
+    case kCustomAuto:
+      // Put custom auto code here
+      break;
+    case kDefaultAuto:
+    default:
+      // Put default auto code here
+      break;
+    }
+  }
+
+  /**
+   * This function is called periodically during operator control.
+   */
+  @Override
+  public void teleopPeriodic() {
+    try {
+      actions.input(new DriverInput()
+          .withInput("LDrive", driverLeft.getRawAxis(1)) // used - drives left side
+          .withInput("RDrive", driverRight.getRawAxis(1)) // used - drives right side
+          .withInput("AButton", xbox.getAButton()) // used - test color
+          .withInput("XButton", xbox.getXButton()) // used - color sensor
+      );
+    } catch (IllegalAccessException e) {
+      e.printStackTrace();
+    } catch (IllegalArgumentException e) {
+      e.printStackTrace();
+    } catch (InvocationTargetException e) {
+      e.printStackTrace();
+    }
+  }
+  public void robotOperation(DriverInput input){
+    // drive train
+    double leftaxis = driverLeft.getRawAxis(1);
+    if(Math.abs(leftaxis) > .13){
+      leftaxis = leftaxis * tankVar;
+      frontLeftSpeed.set(ControlMode.PercentOutput, (leftaxis * -1 ));
+      backLeftSpeed.set(ControlMode.PercentOutput, (leftaxis * -1));  
+    } else {
+      frontLeftSpeed.set(ControlMode.PercentOutput, (0));
+      backLeftSpeed.set(ControlMode.PercentOutput, (0));
+    }
+    double rightaxis = driverRight.getRawAxis(1);
+    if(Math.abs(rightaxis) > .13){
+      rightaxis = rightaxis * tankVar;
+      frontRightSpeed.set(ControlMode.PercentOutput, (rightaxis));
+      backRightSpeed.set(ControlMode.PercentOutput, (rightaxis));
+    } else {
+      frontRightSpeed.set(ControlMode.PercentOutput, (0));
+      backRightSpeed.set(ControlMode.PercentOutput, (0));
+    }
+    
+    // shifters; left - increase, right - decrease
+    if(driverLeft.getRawButton(1) && toggleLT) {
+      if(!(tankVar == 1)){
+        tankVar = tankVar + .15;
+      }
+      toggleLT = false;
+    } if(!(driverLeft.getRawButton(1)) && !(toggleLT)) {
+      toggleLT = true;
+    }
+    if(driverRight.getRawButton(1) && toggleRT) {
+      if(!(tankVar == .25)){
+        tankVar = tankVar - .15;
+      }
+      toggleRT = false;
+    } if(!(driverRight.getRawButton(1)) && !(toggleRT)) {
+      toggleRT = true;
+    }
+    
+
+  /* test color detector input
+    Color detectedColor = m_colorSensor.getColor();
+    if(xbox.getAButton()){
+      if(!(detectedColor.red > 0.47)){
+        colorMotor.set(ControlMode.PercentOutput, .1);
+      }
+    }
+  */
+
+    // test belt
+    if(xbox.getBButton()){
+      beltMotor.set(ControlMode.PercentOutput, -1);
+    } else {
+      beltMotor.set(ControlMode.PercentOutput, 0);
+    }
+
+    // color sensor import from field.
+    if(fieldColor.charAt(0) == 'B'){
+      color = 1;
+    } if(fieldColor.charAt(0) == 'Y'){
+      color = 2;
+    } if(fieldColor.charAt(0) == 'B'){
+      color = 3;
+    } if(fieldColor.charAt(0) == 'B'){
+      color = 4;
+    }
+
+    /*
+    Color sensor just sets itself to be 2 colors behind the actual.
+    Driver must set up the sensor to be on the midpoint color.
+    */
+
+    // color sensor manual
+    if(driverRight.getRawButton(6)){
+      color = 1; // red
+    } if(driverRight.getRawButton(7)){
+      color = 2; // green
+    } if(driverRight.getRawButton(10)){
+      color = 3; // blue
+    } if(driverRight.getRawButton(11)){
+      color = 4; // yellow
+    }
+
+    // color sensor pressing
+    if(xbox.getXButton() && toggleX) {
+      spin(color);
+      toggleX = false;
+    } if(!(xbox.getXButton() && !(toggleX))){
+      toggleX = true;
+    }
+
+  }
+  
+  private void spin(int ColorSense) {
+    boolean colorLoop = true;
+    int colorcount = 0;
+    boolean dupecheck = true;
+    if(ColorSense == 1){
+      while(colorLoop){
+        Color detectedColor = m_colorSensor.getColor();
+        colorMotor.set(ControlMode.PercentOutput, .1);
+        if(detectedColor.red > 0.47 && dupecheck) {
+          colorcount = colorcount + 1;
+          System.out.println(colorcount);
+          dupecheck = false;
+        }
+        if(detectedColor.red <= 0.47) {
+          dupecheck = true;
+        }
+        if(colorcount >= 8) {
+          colorLoop = false;
+        }
+      }
+    } else if(ColorSense == 2){
+      while(colorLoop){
+        Color detectedColor = m_colorSensor.getColor();
+        colorMotor.set(ControlMode.PercentOutput, .1);
+        if(detectedColor.green > 0.47 && dupecheck) {
+          colorcount = colorcount + 1;
+          System.out.println(colorcount);
+          dupecheck = false;
+        }
+        if(detectedColor.green <= 0.47) {
+          dupecheck = true;
+        }
+        if(colorcount >= 8) {
+          colorLoop = false;
+        }
+      }
+    } else if(ColorSense == 3){
+      while(colorLoop){
+        Color detectedColor = m_colorSensor.getColor();
+        colorMotor.set(ControlMode.PercentOutput, .1);
+        if(detectedColor.blue > 0.47 && dupecheck) {
+          colorcount = colorcount + 1;
+          System.out.println(colorcount);
+          dupecheck = false;
+        }
+        if(detectedColor.blue <= 0.47) {
+          dupecheck = true;
+        }
+        if(colorcount >= 8) {
+          colorLoop = false;
+        }
+      }
+    } else if(ColorSense == 4){
+      while(colorLoop){
+        Color detectedColor = m_colorSensor.getColor();
+        colorMotor.set(ControlMode.PercentOutput, .1);
+        if(detectedColor.red > 0.27 && detectedColor.green > 0.27 && dupecheck) {
+          colorcount = colorcount + 1;
+          System.out.println(colorcount);
+          dupecheck = false;
+        }
+        if(detectedColor.red <= 0.47 && detectedColor.green <= 0.27) {
+          dupecheck = true;
+        }
+        if(colorcount >= 8) {
+          colorLoop = false;
+        }
+      }
+    } 
+  }
+
+  /**
+   * This function is called periodically during test mode.
+   */
+  @Override
+  public void testPeriodic() {
+  }
 }
