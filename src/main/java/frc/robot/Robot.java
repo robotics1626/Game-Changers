@@ -1,6 +1,7 @@
 package frc.robot;
 
 import edu.wpi.first.wpilibj.TimedRobot;
+import edu.wpi.first.wpilibj.GenericHID.Hand;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -8,6 +9,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.DoubleSolenoid.Value;
 
 // Below: Limelight Imports
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -55,21 +57,31 @@ public class Robot extends TimedRobot {
   private TalonFX frontRightSpeed;
   private TalonFX backLeftSpeed;
   private TalonFX backRightSpeed;
-  private double tankVar = 1;
   private boolean toggleLT;
   private boolean toggleRT;
+
+  // air pressure
+  private boolean gearShift;
+  private DoubleSolenoid shifter;
+  private Compressor compressor;
+  private AnalogInput pressureSensor;
 
   // defining color sensor
   private TalonSRX colorMotor;
 
   // belt
+  private double beltSpeed;
   private TalonSRX beltMotor;
+
+  // turret spinner
+  private TalonSRX spinMotor;
 
   // defining Limelight Variables
   NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
   NetworkTableEntry tx = table.getEntry("tx");
   NetworkTableEntry ty = table.getEntry("ty");
   NetworkTableEntry ta = table.getEntry("ta");
+  private boolean toggleY;
 
   // defining color sensor variables
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
@@ -105,6 +117,10 @@ public class Robot extends TimedRobot {
 
     // I beat my kids with a
     beltMotor = new TalonSRX(6);
+    beltSpeed = -1;
+
+    // turret spinner
+    spinMotor = new TalonSRX(7);
 
     // controller and joystick init
     driverLeft = new Joystick(0);
@@ -116,8 +132,16 @@ public class Robot extends TimedRobot {
     DriverInput.nameInput("RDrive");
     DriverInput.nameInput("AButton");
 
+    // pressure declares
+    gearShift = true;
+    shifter = new DoubleSolenoid(0, 1);
+    pressureSensor = new AnalogInput(0);
+    compressor = new Compressor();
+    compressor.start();
+
     // toggle declare
     toggleX = true;
+    toggleY = true;
     toggleLT = true;
     toggleRT = true;
 
@@ -137,6 +161,10 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotPeriodic() {
+    //pressure check
+    double pressure = (250 * (pressureSensor.getVoltage() / 5.0)) - 13;
+    SmartDashboard.putString("Pressure Sensor", String.format("%.0f", pressure));
+
     // limelight variable check
     double x = tx.getDouble(0.0);
     double y = ty.getDouble(0.0);
@@ -216,7 +244,6 @@ public class Robot extends TimedRobot {
     // drive train
     double leftaxis = driverLeft.getRawAxis(1);
     if(Math.abs(leftaxis) > .13){
-      leftaxis = leftaxis * tankVar;
       frontLeftSpeed.set(ControlMode.PercentOutput, (leftaxis * -1 ));
       backLeftSpeed.set(ControlMode.PercentOutput, (leftaxis * -1));  
     } else {
@@ -225,7 +252,6 @@ public class Robot extends TimedRobot {
     }
     double rightaxis = driverRight.getRawAxis(1);
     if(Math.abs(rightaxis) > .13){
-      rightaxis = rightaxis * tankVar;
       frontRightSpeed.set(ControlMode.PercentOutput, (rightaxis));
       backRightSpeed.set(ControlMode.PercentOutput, (rightaxis));
     } else {
@@ -233,22 +259,24 @@ public class Robot extends TimedRobot {
       backRightSpeed.set(ControlMode.PercentOutput, (0));
     }
     
-    // shifters; left - increase, right - decrease
-    if(driverLeft.getRawButton(1) && toggleLT) {
-      if(!(tankVar == 1)){
-        tankVar = tankVar + .15;
+    // shifter set
+    if((driverLeft.getRawButton(1) && toggleLT) || (driverRight.getRawButton(1) && toggleRT)) {
+      if(gearShift){
+        gearShift = false;
+      } else {
+        gearShift = true;
       }
       toggleLT = false;
     } if(!(driverLeft.getRawButton(1)) && !(toggleLT)) {
       toggleLT = true;
-    }
-    if(driverRight.getRawButton(1) && toggleRT) {
-      if(!(tankVar == .25)){
-        tankVar = tankVar - .15;
-      }
-      toggleRT = false;
-    } if(!(driverRight.getRawButton(1)) && !(toggleRT)) {
+    } if(!(driverRight.getRawButton(1) && toggleRT)) {
       toggleRT = true;
+    }
+    
+    if(gearShift){
+      shifter.set(Value.kForward);
+    } else {
+      shifter.set(Value.kReverse);
     }
     
 
@@ -262,8 +290,14 @@ public class Robot extends TimedRobot {
   */
 
     // test belt
+    if(xbox.getBumper(Hand.kLeft)){
+      beltSpeed = -1; // intake
+    }
+    if(xbox.getBumper(Hand.kRight)){
+      beltSpeed = 1; // reverse
+    }
     if(xbox.getBButton()){
-      beltMotor.set(ControlMode.PercentOutput, -1);
+      beltMotor.set(ControlMode.PercentOutput, beltSpeed);
     } else {
       beltMotor.set(ControlMode.PercentOutput, 0);
     }
@@ -301,6 +335,14 @@ public class Robot extends TimedRobot {
       toggleX = false;
     } if(!(xbox.getXButton() && !(toggleX))){
       toggleX = true;
+    }
+
+    // limelight sensing
+    if(xbox.getYButton() && toggleY) {
+      limeRun();
+      toggleY = false;
+    } if(!(xbox.getYButton() && !(toggleY))){
+      toggleY = true;
     }
 
   }
@@ -374,6 +416,54 @@ public class Robot extends TimedRobot {
         }
       }
     } 
+  }
+
+  // limelight scan class
+  public void limeRun(){
+    // init limelight values
+    NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
+    NetworkTableEntry tx = table.getEntry("tx");
+    NetworkTableEntry ty = table.getEntry("ty");
+    NetworkTableEntry ta = table.getEntry("ta");
+
+    // variables
+    double xVal = tx.getDouble(0.0);
+    double area = ta.getDouble(0.0);
+    boolean runCheck = true;
+    boolean fire = false;
+    boolean areaCheck = false;
+
+    // checking to make sure the target exists
+    if(area > 0){
+      areaCheck = true;
+    }
+    // spin loop
+    if(areaCheck){
+      while(runCheck){
+        xVal = tx.getDouble(0.0);
+        if(xVal > 0.05 && xVal <= 0.2){
+          spinMotor.set(ControlMode.PercentOutput, .1);
+        } else if(xVal > 0.2){
+          spinMotor.set(ControlMode.PercentOutput, .4);
+        } else if(Math.abs(xVal) < 0.05){
+          spinMotor.set(ControlMode.PercentOutput, 0);
+          fire = true;
+          runCheck = false;
+        } else if(xVal < -0.05 && xVal >= -0.2){
+          spinMotor.set(ControlMode.PercentOutput, -.1);
+        } else if(xVal < -0.2){
+          spinMotor.set(ControlMode.PercentOutput, -.4);
+        }
+      }
+    }
+    // final area check
+    if(!(area > 0)){
+      fire = false;
+    }
+    // firing
+    if(fire){
+      // add code to fire turret
+    }
   }
 
   /**
