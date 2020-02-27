@@ -1,7 +1,24 @@
+/*
+Controls:
+X button - back intake up
+B button - back intake down
+A button - intake toggle
+LT - Limelight
+RT - Turret fire
+DPad Up = Whinch Up
+DPad Down = Whinch Down
+Menu button - Color sensor
+Xbox bumpers - turret spin
+Xbox right stick - intake belt
+driver joysticks - drive
+driver triggers - gear shift
+*/
+
 package frc.robot;
 
 import edu.wpi.first.wpilibj.TimedRobot;
-import edu.wpi.first.wpilibj.GenericHID.Hand;
+import edu.wpi.first.wpilibj.XboxController.*;
+import edu.wpi.first.wpilibj.GenericHID.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -21,14 +38,21 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.I2C;
 import edu.wpi.first.wpilibj.util.Color;
 import com.revrobotics.ColorSensorV3;
+import com.revrobotics.SparkMax;
 
 import java.lang.reflect.InvocationTargetException;
 
 // Talon SRX and FX imports 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
+import com.ctre.phoenix.motorcontrol.can.VictorSPX;
 import com.ctre.phoenix.motorcontrol.can.TalonFX;
-import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
+import com.ctre.phoenix.sensors.CANCoder;
+import com.ctre.phoenix.sensors.CANCoderConfiguration;
+
+// sparkmax imports
+import com.revrobotics.CANSparkMax;
+import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -43,14 +67,11 @@ public class Robot extends TimedRobot {
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
-  // public static OI m_oi;
-  private WPI_TalonSRX RobotShooter;
 
   // defining controllers
   private XboxController xbox;
   private Joystick driverLeft;
   private Joystick driverRight;
-  private DriverStation driverStation;
 
   // defining tank drive
   private TalonFX frontLeftSpeed;
@@ -62,33 +83,46 @@ public class Robot extends TimedRobot {
 
   // air pressure
   private boolean gearShift;
+  private boolean intakeShift;
+  private boolean intakeCheck;
   private DoubleSolenoid shifter;
+  private DoubleSolenoid intakeButton;
+  private DoubleSolenoid intakeButton2;
   private Compressor compressor;
   private AnalogInput pressureSensor;
 
   // defining color sensor
-  private TalonSRX colorMotor;
+  private VictorSPX colorMotor;
 
-  // belt
-  private double beltSpeed;
+  // intake
   private TalonSRX beltMotor;
+  private VictorSPX intakeMotor;
+  private SpeedController beltTopMotor;
+  private SpeedController beltSecondaryMotor;
+  private TalonFX winch;
+  private boolean toggleB;
 
   // turret spinner
   private TalonSRX spinMotor;
+  // private double spinValue;
+  // private CANCoder spinEncoder;
+
+  // turret fire
+  private TalonFX turretFire;
 
   // defining Limelight Variables
   NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
   NetworkTableEntry tx = table.getEntry("tx");
   NetworkTableEntry ty = table.getEntry("ty");
   NetworkTableEntry ta = table.getEntry("ta");
-  private boolean toggleY;
+  private boolean toggleStart;
+  private boolean limeToggle;
 
   // defining color sensor variables
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
   private final ColorSensorV3 m_colorSensor = new ColorSensorV3(i2cPort);
   private int color = 0;
-  private boolean toggleX;
-  private int colorrecord = 0;
+  private boolean toggleMenu;
   private String fieldColor = DriverStation.getInstance().getGameSpecificMessage();
 
   // action recorder
@@ -113,14 +147,22 @@ public class Robot extends TimedRobot {
     backRightSpeed = new TalonFX(4);
 
     // color sensor
-    colorMotor = new TalonSRX(5);
+    colorMotor = new VictorSPX(5);
 
     // I beat my kids with a
     beltMotor = new TalonSRX(6);
-    beltSpeed = -1;
+    beltTopMotor = new CANSparkMax(11, MotorType.kBrushless);
+    beltSecondaryMotor = new CANSparkMax(12, MotorType.kBrushless);
+    winch = new TalonFX(8);
+    intakeMotor = new VictorSPX(9);
 
     // turret spinner
     spinMotor = new TalonSRX(7);
+    // spinEncoder = new CANCoder(7);
+    // spinValue = 0;
+
+    //turret fire
+    turretFire = new TalonFX(15);
 
     // controller and joystick init
     driverLeft = new Joystick(0);
@@ -134,20 +176,35 @@ public class Robot extends TimedRobot {
 
     // pressure declares
     gearShift = true;
-    shifter = new DoubleSolenoid(0, 1);
+    intakeShift = true;
+    shifter = new DoubleSolenoid(2, 3);
+    intakeButton = new DoubleSolenoid(4, 5);
+    intakeButton2 = new DoubleSolenoid(6, 7);
     pressureSensor = new AnalogInput(0);
-    compressor = new Compressor();
+    shifter.set(Value.kReverse);
+    intakeButton.set(Value.kForward);
+    intakeButton2.set(Value.kForward);
+    intakeCheck = true;
+    compressor = new Compressor(13);
     compressor.start();
 
+    // turret RPM
+    // turretFire.configForwardSoftLimitThreshold(6000, 0);
+    // turretFire.configReverseSoftLimitThreshold(-6000, 0);
+    turretFire.configForwardSoftLimitEnable(false, 0);
+    turretFire.configReverseSoftLimitEnable(false, 0);
+
     // toggle declare
-    toggleX = true;
-    toggleY = true;
+    toggleMenu = true;
+    toggleStart = true;
+    toggleB = true;
     toggleLT = true;
     toggleRT = true;
+    limeToggle = true;
 
     // action recorder setup
-    actions = new ActionRecorder().setMethod(this, "robotOperation", DriverInput.class).setUpButton(xbox, 1)
-        .setDownButton(xbox, 2).setRecordButton(xbox, 3);
+    /*actions = new ActionRecorder().setMethod(this, "robotOperation", DriverInput.class).setUpButton(xbox, 1)
+    .setDownButton(xbox, 2).setRecordButton(xbox, 3);*/
   }
 
   /**
@@ -170,9 +227,6 @@ public class Robot extends TimedRobot {
     double y = ty.getDouble(0.0);
     double area = ta.getDouble(0.0);
 
-    // limelight target distance from crosshair in pixels
-    double xydistance = Math.sqrt(x * x + y * y);
-
     // pushing limelight vars
     SmartDashboard.putNumber("LimelightX", x);
     SmartDashboard.putNumber("LimelightY", y);
@@ -183,6 +237,10 @@ public class Robot extends TimedRobot {
     SmartDashboard.putNumber("Red", detectedColor.red);
     SmartDashboard.putNumber("Green", detectedColor.green);
     SmartDashboard.putNumber("Blue", detectedColor.blue);
+
+    // encoder class
+    // spinValue = spinEncoder.getPosition();
+    // SmartDashboard.putNumber("Spin Encoder", spinValue);
   }
 
   /**
@@ -202,6 +260,22 @@ public class Robot extends TimedRobot {
     m_autoSelected = m_chooser.getSelected();
     // m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
     System.out.println("Auto selected: " + m_autoSelected);
+    boolean detectState = true;
+    while(detectState){
+      if(ta.getDouble(0.0) > 0) {
+        detectState = false;
+        frontLeftSpeed.set(ControlMode.PercentOutput, 0);
+        backLeftSpeed.set(ControlMode.PercentOutput, 0);
+        frontRightSpeed.set(ControlMode.PercentOutput, 0);
+        backRightSpeed.set(ControlMode.PercentOutput, 0);
+      } else {
+        frontLeftSpeed.set(ControlMode.PercentOutput, -1);
+        backLeftSpeed.set(ControlMode.PercentOutput, -1);
+        frontRightSpeed.set(ControlMode.PercentOutput, 1);
+        backRightSpeed.set(ControlMode.PercentOutput, 1);
+      }
+    }
+    limeRun();
   }
 
   /**
@@ -225,22 +299,10 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-    try {
-      actions.input(new DriverInput()
-          .withInput("LDrive", driverLeft.getRawAxis(1)) // used - drives left side
-          .withInput("RDrive", driverRight.getRawAxis(1)) // used - drives right side
-          .withInput("AButton", xbox.getAButton()) // used - test color
-          .withInput("XButton", xbox.getXButton()) // used - color sensor
-      );
-    } catch (IllegalAccessException e) {
-      e.printStackTrace();
-    } catch (IllegalArgumentException e) {
-      e.printStackTrace();
-    } catch (InvocationTargetException e) {
-      e.printStackTrace();
-    }
-  }
-  public void robotOperation(DriverInput input){
+
+  // }
+
+  // public void robotOperation(DriverInput input){
     // drive train
     double leftaxis = driverLeft.getRawAxis(1);
     if(Math.abs(leftaxis) > .13){
@@ -267,51 +329,53 @@ public class Robot extends TimedRobot {
         gearShift = true;
       }
       toggleLT = false;
+      toggleRT = false;
     } if(!(driverLeft.getRawButton(1)) && !(toggleLT)) {
       toggleLT = true;
-    } if(!(driverRight.getRawButton(1) && toggleRT)) {
+    } if(!(driverRight.getRawButton(1)) && !(toggleRT)) {
       toggleRT = true;
     }
-    
+  
     if(gearShift){
-      shifter.set(Value.kForward);
-    } else {
       shifter.set(Value.kReverse);
+    } else {
+      shifter.set(Value.kForward);
     }
-    
 
-  /* test color detector input
-    Color detectedColor = m_colorSensor.getColor();
-    if(xbox.getAButton()){
-      if(!(detectedColor.red > 0.47)){
-        colorMotor.set(ControlMode.PercentOutput, .1);
-      }
-    }
-  */
-
-    // test belt
-    if(xbox.getBumper(Hand.kLeft)){
-      beltSpeed = -1; // intake
-    }
+    // turret spin
     if(xbox.getBumper(Hand.kRight)){
-      beltSpeed = 1; // reverse
+      spinMotor.set(ControlMode.PercentOutput, -1);
+    } else if(xbox.getBumper(Hand.kLeft)){
+      spinMotor.set(ControlMode.PercentOutput, 1);
+    } else {
+      spinMotor.set(ControlMode.PercentOutput, 0);
     }
-    if(xbox.getBButton()){
-      beltMotor.set(ControlMode.PercentOutput, beltSpeed);
+
+    // belt + intake
+    if(xbox.getY(Hand.kRight) > 0 && Math.abs(xbox.getY(Hand.kRight)) > 0.2){
+      beltMotor.set(ControlMode.PercentOutput, -1); // in
+      intakeMotor.set(ControlMode.PercentOutput, 1);
+      beltTopMotor.set(.5);
+    } else if(xbox.getY(Hand.kRight) < 0 && Math.abs(xbox.getY(Hand.kRight)) > 0.2){
+      beltMotor.set(ControlMode.PercentOutput, 1); // out
+      intakeMotor.set(ControlMode.PercentOutput, -1);
+      beltTopMotor.set(-.5);
     } else {
       beltMotor.set(ControlMode.PercentOutput, 0);
+      intakeMotor.set(ControlMode.PercentOutput, 0);
+      beltTopMotor.set(0);
     }
 
-    // color sensor import from field.
-    if(fieldColor.charAt(0) == 'B'){
-      color = 1;
-    } if(fieldColor.charAt(0) == 'Y'){
-      color = 2;
-    } if(fieldColor.charAt(0) == 'B'){
-      color = 3;
-    } if(fieldColor.charAt(0) == 'B'){
-      color = 4;
-    }
+    // // color sensor import from field.
+    // if(fieldColor.charAt(0) == 'B'){
+    //   color = 1;
+    // } if(fieldColor.charAt(0) == 'Y'){
+    //   color = 2;
+    // } if(fieldColor.charAt(0) == 'R'){
+    //   color = 3;
+    // } if(fieldColor.charAt(0) == 'G'){
+    //   color = 4;
+    // }
 
     /*
     Color sensor just sets itself to be 2 colors behind the actual.
@@ -330,21 +394,66 @@ public class Robot extends TimedRobot {
     }
 
     // color sensor pressing
-    if(xbox.getXButton() && toggleX) {
+    if(xbox.getRawButton(7) && toggleMenu) {
       spin(color);
-      toggleX = false;
-    } if(!(xbox.getXButton() && !(toggleX))){
-      toggleX = true;
+      toggleMenu = false;
+    } if(!(xbox.getRawButton(7) && !(toggleMenu))){
+      toggleMenu = true;
     }
 
-    // limelight sensing
-    if(xbox.getYButton() && toggleY) {
-      limeRun();
-      toggleY = false;
-    } if(!(xbox.getYButton() && !(toggleY))){
-      toggleY = true;
+    // limelight?
+    if(xbox.getTriggerAxis(Hand.kLeft) > 0.1){
+      turretFire.set(ControlMode.PercentOutput, 1);
+      limeToggle = false; // limelight is disabled, remove when it isn't
+      if(limeToggle) {
+        double xVal = tx.getDouble(0.0);
+        if(xVal > 0.05 && xVal <= 0.2){
+          spinMotor.set(ControlMode.PercentOutput, .1);
+        } else if(xVal > 0.2){
+          spinMotor.set(ControlMode.PercentOutput, .4);
+        } else if(Math.abs(xVal) < 0.05){
+          spinMotor.set(ControlMode.PercentOutput, 0);
+        } else if(xVal < -0.05 && xVal >= -0.2){
+          spinMotor.set(ControlMode.PercentOutput, -.1);
+        } else if(xVal < -0.2){
+          spinMotor.set(ControlMode.PercentOutput, -.4);
+        }
+      }
+    } else {
+      turretFire.set(ControlMode.PercentOutput, 0);
     }
 
+    // intake shifters
+    if(xbox.getAButton() && intakeShift) {
+      intakeShift = false;
+      if(intakeCheck){
+        intakeButton.set(Value.kReverse);
+        intakeButton2.set(Value.kReverse);
+        intakeCheck = false;
+      } else {
+        intakeButton.set(Value.kForward);
+        intakeButton2.set(Value.kForward);
+        intakeCheck = true;
+      }  
+    } if(!(xbox.getAButton() && !(intakeShift))){
+      intakeShift = true;
+    }
+
+    // winch updown
+    if(xbox.getXButton()) {
+      winch.set(ControlMode.PercentOutput, (-1));
+    } else if(xbox.getBButton()) {
+      winch.set(ControlMode.PercentOutput, (1));
+    } else {
+      winch.set(ControlMode.PercentOutput, (0));
+    }
+
+    // intake back
+    if(xbox.getTriggerAxis(Hand.kRight) > 0.2){
+      beltSecondaryMotor.set(1);
+    } else {
+      beltSecondaryMotor.set(0);
+    }
   }
   
   private void spin(int ColorSense) {
@@ -430,7 +539,6 @@ public class Robot extends TimedRobot {
     double xVal = tx.getDouble(0.0);
     double area = ta.getDouble(0.0);
     boolean runCheck = true;
-    boolean fire = false;
     boolean areaCheck = false;
 
     // checking to make sure the target exists
@@ -447,7 +555,6 @@ public class Robot extends TimedRobot {
           spinMotor.set(ControlMode.PercentOutput, .4);
         } else if(Math.abs(xVal) < 0.05){
           spinMotor.set(ControlMode.PercentOutput, 0);
-          fire = true;
           runCheck = false;
         } else if(xVal < -0.05 && xVal >= -0.2){
           spinMotor.set(ControlMode.PercentOutput, -.1);
@@ -456,14 +563,20 @@ public class Robot extends TimedRobot {
         }
       }
     }
-    // final area check
-    if(!(area > 0)){
-      fire = false;
-    }
-    // firing
-    if(fire){
-      // add code to fire turret
-    }
+
+/* // I have no clue what any of this is so I'm commenting it out. - Nokes
+    // whinch + dpad set
+    int dpadA = xbox.getPOV();
+    int dpadI = 0;
+    if (dpadA == 0)   { dpadI = 1; }
+    if (dpadA == 90)  { dpadI = 2; }
+    if (dpadA == 180) { dpadI = 3; }
+    if (dpadA == 270) { dpadI = 4; }
+    if (dpadI == 1) { whinchMotor.set(ControlMode.PercentOutput, 0.5); }
+    // if (dpadI == 2) {}
+    if (dpadI == 3) { whinchMotor.set(ControlMode.PercentOutput, -0.5); }
+    // if (dpadI == 4) { fire = true; } <-- Will be fixed later to be used as an override if Limelight Fails - Dan
+    */
   }
 
   /**
@@ -471,5 +584,7 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void testPeriodic() {
+  System.out.println("My first code!");
   }
+
 }
