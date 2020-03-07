@@ -1,72 +1,43 @@
-/*
-Controls:
-X button - back intake up
-B button - back intake down
-A button - intake toggle
-LT - Limelight
-RT - Turret fire
-DPad Up = Whinch Up
-DPad Down = Whinch Down
-Menu button - Color sensor
-Xbox bumpers - turret spin
-Xbox right stick - intake belt
-driver joysticks - drive
-driver triggers - gear shift
-*/
-
 package frc.robot;
 
 import edu.wpi.first.wpilibj.TimedRobot;
-import edu.wpi.first.wpilibj.XboxController.*;
 import edu.wpi.first.wpilibj.GenericHID.*;
-import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
+import edu.wpi.first.wpilibj.shuffleboard.BuiltInWidgets;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.*;
-import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.DoubleSolenoid.Value;
 
 // Below: Limelight Imports
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableInstance;
-
 // Color sensor imports
 import edu.wpi.first.wpilibj.I2C;
-import edu.wpi.first.wpilibj.util.Color;
 import com.revrobotics.ColorSensorV3;
-import com.revrobotics.SparkMax;
 
-import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
 
 // Talon SRX and FX imports 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.VictorSPX;
 import com.ctre.phoenix.motorcontrol.can.TalonFX;
-import com.ctre.phoenix.sensors.CANCoder;
-import com.ctre.phoenix.sensors.CANCoderConfiguration;
+import com.ctre.phoenix.motorcontrol.TalonFXControlMode;
+import com.ctre.phoenix.motorcontrol.TalonFXFeedbackDevice;
 
 // sparkmax imports
 import com.revrobotics.CANSparkMax;
+import com.revrobotics.CANEncoder;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 
-/**
- * The VM is configured to automatically run this class, and to call the
- * functions corresponding to each mode, as described in the TimedRobot
- * documentation. If you change the name of this class or the package after
- * creating this project, you must also update the build.gradle file in the
- * project.
- */
 public class Robot extends TimedRobot {
   private static final String kDefaultAuto = "Default";
   private static final String kCustomAuto = "My Auto";
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
-
 
   // defining controllers
   private XboxController xbox;
@@ -84,8 +55,9 @@ public class Robot extends TimedRobot {
   // air pressure
   private boolean gearShift;
   private boolean intakeShift;
-  private boolean intakeCheck;
+  private int intakeCheck;
   private DoubleSolenoid shifter;
+  private DoubleSolenoid winchPistons;
   private DoubleSolenoid intakeButton;
   private DoubleSolenoid intakeButton2;
   private Compressor compressor;
@@ -97,26 +69,33 @@ public class Robot extends TimedRobot {
   // intake
   private TalonSRX beltMotor;
   private VictorSPX intakeMotor;
-  private SpeedController beltTopMotor;
+  private TalonSRX beltTopMotor;
   private SpeedController beltSecondaryMotor;
   private TalonFX winch;
-  private boolean toggleB;
 
   // turret spinner
-  private TalonSRX spinMotor;
-  // private double spinValue;
-  // private CANCoder spinEncoder;
+  private CANSparkMax spinMotor;
+  private CANEncoder spinEncoder;
+  private double spinPos;
 
   // turret fire
+  private NetworkTableEntry rpmSet;
   private TalonFX turretFire;
+  private double rpmFinal;
 
   // defining Limelight Variables
   NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
   NetworkTableEntry tx = table.getEntry("tx");
   NetworkTableEntry ty = table.getEntry("ty");
   NetworkTableEntry ta = table.getEntry("ta");
+  NetworkTableEntry ledEntry = table.getEntry("ledMode");
+  private double x = tx.getDouble(0.0);
+  private double y = ty.getDouble(0.0);
+  private double area = ta.getDouble(0.0);
   private boolean toggleStart;
   private boolean limeToggle;
+  private boolean fireCheck;
+  private int limeInt;
 
   // defining color sensor variables
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
@@ -124,11 +103,6 @@ public class Robot extends TimedRobot {
   private int color = 0;
   private boolean toggleMenu;
   private String fieldColor = DriverStation.getInstance().getGameSpecificMessage();
-
-  // action recorder
-  private ActionRecorder actions;
-
-  // toggles
 
   /**
    * This function is run when the robot is first started up and should be used
@@ -139,6 +113,9 @@ public class Robot extends TimedRobot {
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
     m_chooser.addOption("My Auto", kCustomAuto);
     SmartDashboard.putData("Auto choices", m_chooser);
+
+    rpmSet = Shuffleboard.getTab("SmartDashboard").add("Initial", 4500)
+      .withWidget(BuiltInWidgets.kNumberSlider).withProperties(Map.of("min", 3500, "max", 5500, "block increment", 100)).getEntry();
 
     // drive train assignments
     frontLeftSpeed = new TalonFX(1);
@@ -151,23 +128,29 @@ public class Robot extends TimedRobot {
 
     // I beat my kids with a
     beltMotor = new TalonSRX(6);
-    beltTopMotor = new CANSparkMax(11, MotorType.kBrushless);
+    beltTopMotor = new TalonSRX(11);
     beltSecondaryMotor = new CANSparkMax(12, MotorType.kBrushless);
     winch = new TalonFX(8);
     intakeMotor = new VictorSPX(9);
 
     // turret spinner
-    spinMotor = new TalonSRX(7);
-    // spinEncoder = new CANCoder(7);
-    // spinValue = 0;
+    spinMotor = new CANSparkMax(7, MotorType.kBrushless);
+    spinEncoder = new CANEncoder(spinMotor);
+    spinPos = 0;
 
-    //turret fire
+    // turret fire
     turretFire = new TalonFX(15);
+    rpmFinal = 4500;
 
     // controller and joystick init
     driverLeft = new Joystick(0);
     driverRight = new Joystick(1);
     xbox = new XboxController(2);
+
+    // current peaks
+    beltMotor.configPeakCurrentLimit(40, 6);
+    beltMotor.configContinuousCurrentLimit(40, 6);
+    beltMotor.enableCurrentLimit(true);
 
     // input declare
     DriverInput.nameInput("LDrive");
@@ -177,105 +160,126 @@ public class Robot extends TimedRobot {
     // pressure declares
     gearShift = true;
     intakeShift = true;
-    shifter = new DoubleSolenoid(2, 3);
-    intakeButton = new DoubleSolenoid(4, 5);
-    intakeButton2 = new DoubleSolenoid(6, 7);
+    shifter = new DoubleSolenoid(13, 6, 7);
+    intakeButton = new DoubleSolenoid(13, 4, 5);
+    intakeButton2 = new DoubleSolenoid(13, 2, 3);
+    winchPistons = new DoubleSolenoid(13, 0, 1);
     pressureSensor = new AnalogInput(0);
-    shifter.set(Value.kReverse);
+    shifter.set(Value.kForward);
+    winchPistons.set(Value.kForward);
     intakeButton.set(Value.kForward);
     intakeButton2.set(Value.kForward);
-    intakeCheck = true;
+    intakeCheck = 1;
     compressor = new Compressor(13);
+    compressor.setClosedLoopControl(true);
     compressor.start();
 
     // turret RPM
-    // turretFire.configForwardSoftLimitThreshold(6000, 0);
-    // turretFire.configReverseSoftLimitThreshold(-6000, 0);
-    turretFire.configForwardSoftLimitEnable(false, 0);
-    turretFire.configReverseSoftLimitEnable(false, 0);
+    turretFire.configFactoryDefault();
+    
+    /* Config neutral deadband to be the smallest possible */
+    turretFire.configNeutralDeadband(0.001);
+
+    /* Config sensor used for Primary PID [Velocity] */
+    turretFire.configSelectedFeedbackSensor(TalonFXFeedbackDevice.IntegratedSensor, Constants.kPIDLoopIdx,
+        Constants.kTimeoutMs);
+
+    /* Config the peak and nominal outputs */
+    turretFire.configNominalOutputForward(0, Constants.kTimeoutMs);
+    turretFire.configNominalOutputReverse(0, Constants.kTimeoutMs);
+    turretFire.configPeakOutputForward(1, Constants.kTimeoutMs);
+    turretFire.configPeakOutputReverse(-1, Constants.kTimeoutMs);
+
+    /* Config the Velocity closed loop gains in slot0 */
+    turretFire.config_kF(Constants.kPIDLoopIdx, Constants.kGains_Velocit.kF, Constants.kTimeoutMs);
+    turretFire.config_kP(Constants.kPIDLoopIdx, Constants.kGains_Velocit.kP, Constants.kTimeoutMs);
+    turretFire.config_kI(Constants.kPIDLoopIdx, Constants.kGains_Velocit.kI, Constants.kTimeoutMs);
+    turretFire.config_kD(Constants.kPIDLoopIdx, Constants.kGains_Velocit.kD, Constants.kTimeoutMs);
 
     // toggle declare
     toggleMenu = true;
     toggleStart = true;
-    toggleB = true;
     toggleLT = true;
     toggleRT = true;
     limeToggle = true;
+    limeInt = 1;
 
-    // action recorder setup
-    /*actions = new ActionRecorder().setMethod(this, "robotOperation", DriverInput.class).setUpButton(xbox, 1)
-    .setDownButton(xbox, 2).setRecordButton(xbox, 3);*/
+    ledEntry.setNumber(1);
   }
 
-  /**
-   * This function is called every robot packet, no matter the mode. Use this for
-   * items like diagnostics that you want ran during disabled, autonomous,
-   * teleoperated and test.
-   *
-   * <p>
-   * This runs after the mode specific periodic functions, but before LiveWindow
-   * and SmartDashboard integrated updating.
-   */
   @Override
   public void robotPeriodic() {
-    //pressure check
+    // pressure check
     double pressure = (250 * (pressureSensor.getVoltage() / 5.0)) - 13;
     SmartDashboard.putString("Pressure Sensor", String.format("%.0f", pressure));
 
+    // turret check
+    spinPos = spinEncoder.getPosition();
+    SmartDashboard.putNumber("Turret Raw Position", spinPos);
+    if (spinPos > 320) {
+      SmartDashboard.putString("Turret Spinner Position", "Right Bound");
+    } else if (spinPos < 25) {
+      SmartDashboard.putString("Turret Spinner Position", "Left Bound");
+    } else {
+      SmartDashboard.putString("Turret Spinner Position", "Middle");
+    }
+    SmartDashboard.putNumber("Turret RPM", turretFire.getSelectedSensorVelocity() / 3.41);
+
     // limelight variable check
-    double x = tx.getDouble(0.0);
-    double y = ty.getDouble(0.0);
-    double area = ta.getDouble(0.0);
+    x = tx.getDouble(0.0);
+    y = ty.getDouble(0.0);
+    area = ta.getDouble(0.0);
+
+    NetworkTable limelightTable = NetworkTableInstance.getDefault().getTable("limelight");
+    double localTx = limelightTable.getEntry("tx").getDouble(0);
 
     // pushing limelight vars
     SmartDashboard.putNumber("LimelightX", x);
     SmartDashboard.putNumber("LimelightY", y);
     SmartDashboard.putNumber("LimelightArea", area);
+    SmartDashboard.putNumber("Local Tx", localTx);
+    if (limeToggle) {
+      SmartDashboard.putString("Limelight Status", "Enabled");
+    } else {
+      SmartDashboard.putString("Limelight Status", "Disabled");
+    }
+
+    // turret RPM output
+    SmartDashboard.putNumber("RPM Input", (rpmSet.getDouble(0.0)));
+    if(rpmSet.getName() != null){
+      rpmFinal = (rpmSet.getDouble(0.0)) * 3.41;
+    }
 
     // defining color vars
     Color detectedColor = m_colorSensor.getColor();
     SmartDashboard.putNumber("Red", detectedColor.red);
     SmartDashboard.putNumber("Green", detectedColor.green);
     SmartDashboard.putNumber("Blue", detectedColor.blue);
-
-    // encoder class
-    // spinValue = spinEncoder.getPosition();
-    // SmartDashboard.putNumber("Spin Encoder", spinValue);
+    if(detectedColor.green > 0.47){
+      SmartDashboard.putString("Color", "Green");
+    } else if(detectedColor.red > 0.27 && detectedColor.green > 0.27) {
+      SmartDashboard.putString("Color", "Yellow");
+    } else if(detectedColor.red > 0.47){
+      SmartDashboard.putString("Color", "Red");
+    } else if(detectedColor.blue > 0.47){
+      SmartDashboard.putString("Color", "Blue");
+    } else {
+      SmartDashboard.putString("Color", "N/A");
+    }
   }
 
-  /**
-   * This autonomous (along with the chooser code above) shows how to select
-   * between different autonomous modes using the dashboard. The sendable chooser
-   * code works with the Java SmartDashboard. If you prefer the LabVIEW Dashboard,
-   * remove all of the chooser code and uncomment the getString line to get the
-   * auto name from the text box below the Gyro
-   *
-   * <p>
-   * You can add additional auto modes by adding additional comparisons to the
-   * switch structure below with additional strings. If using the SendableChooser
-   * make sure to add them to the chooser code above as well.
-   */
+  @Override
+  public void disabledInit() {
+    turretFire.set(ControlMode.PercentOutput, 0);
+    ledEntry.setNumber(1);
+  }
+
   @Override
   public void autonomousInit() {
+    fireCheck = false;
     m_autoSelected = m_chooser.getSelected();
-    // m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
-    System.out.println("Auto selected: " + m_autoSelected);
-    boolean detectState = true;
-    while(detectState){
-      if(ta.getDouble(0.0) > 0) {
-        detectState = false;
-        frontLeftSpeed.set(ControlMode.PercentOutput, 0);
-        backLeftSpeed.set(ControlMode.PercentOutput, 0);
-        frontRightSpeed.set(ControlMode.PercentOutput, 0);
-        backRightSpeed.set(ControlMode.PercentOutput, 0);
-      } else {
-        frontLeftSpeed.set(ControlMode.PercentOutput, -1);
-        backLeftSpeed.set(ControlMode.PercentOutput, -1);
-        frontRightSpeed.set(ControlMode.PercentOutput, 1);
-        backRightSpeed.set(ControlMode.PercentOutput, 1);
-      }
-    }
-    limeRun();
+    intakeButton.set(Value.kReverse);
+    intakeButton2.set(Value.kReverse);
   }
 
   /**
@@ -289,7 +293,39 @@ public class Robot extends TimedRobot {
       break;
     case kDefaultAuto:
     default:
-      // Put default auto code here
+      if(spinPos < 250){
+        ledEntry.setNumber(1);
+        spinMotor.set(.5);
+      } else {
+        ledEntry.setNumber(3);
+        if(area > 0){
+          if(x > 0.2 && x <= 0.4){
+            if(spinPos < 332.3752) spinMotor.set(-.05);
+          } else if(x > 0.4){
+            if(spinPos < 332.3752) spinMotor.set(-.25);
+          } else if(Math.abs(x) < 0.2){
+            spinMotor.set(0);
+            fireCheck = true;
+          } else if(x < -0.2 && x >= -0.5){
+            if(spinPos > 13.4284) spinMotor.set(.05);                 
+          } else if(x < -0.4){
+            if(spinPos > 13.4284) spinMotor.set(.25);
+          }
+        }
+      }
+
+      rpmFinal = 4500 * 3.41;
+      turretFire.set(TalonFXControlMode.Velocity, rpmFinal);
+
+      if((turretFire.getSelectedSensorVelocity() - 341) < rpmFinal && (turretFire.getSelectedSensorVelocity() + 341) > rpmFinal && fireCheck){
+        beltSecondaryMotor.set(1);
+        beltMotor.set(ControlMode.PercentOutput, 1);
+        beltTopMotor.set(ControlMode.PercentOutput, .5);
+      } else {
+        beltSecondaryMotor.set(0);
+        beltMotor.set(ControlMode.PercentOutput, 0);
+        beltTopMotor.set(ControlMode.PercentOutput, 0);
+      }
       break;
     }
   }
@@ -299,10 +335,6 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-
-  // }
-
-  // public void robotOperation(DriverInput input){
     // drive train
     double leftaxis = driverLeft.getRawAxis(1);
     if(Math.abs(leftaxis) > .13){
@@ -337,120 +369,142 @@ public class Robot extends TimedRobot {
     }
   
     if(gearShift){
-      shifter.set(Value.kReverse);
-    } else {
       shifter.set(Value.kForward);
+    } else {
+      shifter.set(Value.kReverse);
     }
 
     // turret spin
     if(xbox.getBumper(Hand.kRight)){
-      spinMotor.set(ControlMode.PercentOutput, -1);
+      if(spinPos > 13.4284){
+        spinMotor.set(-.25);
+      }
     } else if(xbox.getBumper(Hand.kLeft)){
-      spinMotor.set(ControlMode.PercentOutput, 1);
+      if(spinPos < 348.3752){
+        spinMotor.set(.25);
+      }
     } else {
-      spinMotor.set(ControlMode.PercentOutput, 0);
+      spinMotor.set(0);
     }
 
     // belt + intake
     if(xbox.getY(Hand.kRight) > 0 && Math.abs(xbox.getY(Hand.kRight)) > 0.2){
-      beltMotor.set(ControlMode.PercentOutput, -1); // in
-      intakeMotor.set(ControlMode.PercentOutput, 1);
-      beltTopMotor.set(.5);
+      beltMotor.set(ControlMode.PercentOutput, -1); // in 
+      beltSecondaryMotor.set(-.4);
     } else if(xbox.getY(Hand.kRight) < 0 && Math.abs(xbox.getY(Hand.kRight)) > 0.2){
-      beltMotor.set(ControlMode.PercentOutput, 1); // out
-      intakeMotor.set(ControlMode.PercentOutput, -1);
-      beltTopMotor.set(-.5);
+      beltMotor.set(ControlMode.PercentOutput, 1); // out      
+      beltSecondaryMotor.set(.4);
     } else {
       beltMotor.set(ControlMode.PercentOutput, 0);
-      intakeMotor.set(ControlMode.PercentOutput, 0);
-      beltTopMotor.set(0);
     }
 
-    // // color sensor import from field.
-    // if(fieldColor.charAt(0) == 'B'){
-    //   color = 1;
-    // } if(fieldColor.charAt(0) == 'Y'){
-    //   color = 2;
-    // } if(fieldColor.charAt(0) == 'R'){
-    //   color = 3;
-    // } if(fieldColor.charAt(0) == 'G'){
-    //   color = 4;
-    // }
+    // intake motor on top of the arm thingy
+    if(driverLeft.getRawButton(2)){
+      intakeMotor.set(ControlMode.PercentOutput, -.8);
+      beltTopMotor.set(ControlMode.PercentOutput, .8);
+    } else if(driverRight.getRawButton(2)){
+      intakeMotor.set(ControlMode.PercentOutput, .8);
+      beltTopMotor.set(ControlMode.PercentOutput, -.8);
+    } else {
+      intakeMotor.set(ControlMode.PercentOutput, 0);
+      beltTopMotor.set(ControlMode.PercentOutput, 0);
+    }
+
+     // color sensor import from field.
+    if(fieldColor.length() > 0){
+      if(fieldColor.charAt(0) == 'B'){
+         color = 1;
+      } if(fieldColor.charAt(0) == 'Y'){
+         color = 2;
+      } if(fieldColor.charAt(0) == 'R'){
+         color = 3;
+      } if(fieldColor.charAt(0) == 'G'){
+         color = 4;
+      }
+    } 
 
     /*
     Color sensor just sets itself to be 2 colors behind the actual.
     Driver must set up the sensor to be on the midpoint color.
     */
 
-    // color sensor manual
-    if(driverRight.getRawButton(6)){
-      color = 1; // red
-    } if(driverRight.getRawButton(7)){
-      color = 2; // green
-    } if(driverRight.getRawButton(10)){
-      color = 3; // blue
-    } if(driverRight.getRawButton(11)){
-      color = 4; // yellow
-    }
-
     // color sensor pressing
-    if(xbox.getRawButton(7) && toggleMenu) {
+    if(xbox.getRawButton(6) && toggleMenu) {
       spin(color);
       toggleMenu = false;
-    } if(!(xbox.getRawButton(7) && !(toggleMenu))){
+    } if(!(xbox.getRawButton(6) && !(toggleMenu))){
       toggleMenu = true;
     }
 
-    // limelight?
+    // limelight disable
+    if(xbox.getRawButton(7) && toggleStart) {
+      limeInt = limeInt * -1;
+      toggleStart = false;
+    } if(!(xbox.getRawButton(7) && !(toggleStart))){
+      toggleStart = true;
+    }
+
+    if(limeInt == 1){
+      limeToggle = true;
+    } else {
+      limeToggle = false;
+    }
+
+    // limelight // turret fire
     if(xbox.getTriggerAxis(Hand.kLeft) > 0.1){
-      turretFire.set(ControlMode.PercentOutput, 1);
-      limeToggle = false; // limelight is disabled, remove when it isn't
+      turretFire.set(TalonFXControlMode.Velocity, rpmFinal);
       if(limeToggle) {
-        double xVal = tx.getDouble(0.0);
-        if(xVal > 0.05 && xVal <= 0.2){
-          spinMotor.set(ControlMode.PercentOutput, .1);
-        } else if(xVal > 0.2){
-          spinMotor.set(ControlMode.PercentOutput, .4);
-        } else if(Math.abs(xVal) < 0.05){
-          spinMotor.set(ControlMode.PercentOutput, 0);
-        } else if(xVal < -0.05 && xVal >= -0.2){
-          spinMotor.set(ControlMode.PercentOutput, -.1);
-        } else if(xVal < -0.2){
-          spinMotor.set(ControlMode.PercentOutput, -.4);
+        ledEntry.setNumber(3);
+        if(x > 0.2 && x <= 0.4){
+          if(spinPos < 332.3752) spinMotor.set(-.05);
+        } else if(x > 0.4){
+          if(spinPos < 332.3752) spinMotor.set(-.25);
+        } else if(Math.abs(x) < 0.2 && Math.abs(x) > 0.0){
+          spinMotor.set(0);
+        } else if(x < -0.2 && x >= -0.5){
+          if(spinPos > 13.4284) spinMotor.set(.05);                 
+        } else if(x < -0.4){
+          if(spinPos > 13.4284) spinMotor.set(.25);
         }
       }
     } else {
+      ledEntry.setNumber(1);
       turretFire.set(ControlMode.PercentOutput, 0);
     }
 
     // intake shifters
     if(xbox.getAButton() && intakeShift) {
+      intakeCheck = intakeCheck * -1;
       intakeShift = false;
-      if(intakeCheck){
-        intakeButton.set(Value.kReverse);
-        intakeButton2.set(Value.kReverse);
-        intakeCheck = false;
-      } else {
-        intakeButton.set(Value.kForward);
-        intakeButton2.set(Value.kForward);
-        intakeCheck = true;
-      }  
     } if(!(xbox.getAButton() && !(intakeShift))){
       intakeShift = true;
     }
 
+    if(intakeCheck == 1){
+      intakeButton.set(Value.kReverse);
+      intakeButton2.set(Value.kReverse);
+    } else {
+      intakeButton.set(Value.kForward);
+      intakeButton2.set(Value.kForward);
+    }  
+
     // winch updown
     if(xbox.getXButton()) {
       winch.set(ControlMode.PercentOutput, (-1));
+      winchPistons.set(Value.kReverse);
     } else if(xbox.getBButton()) {
       winch.set(ControlMode.PercentOutput, (1));
+      winchPistons.set(Value.kReverse);
     } else {
       winch.set(ControlMode.PercentOutput, (0));
+      winchPistons.set(Value.kForward);
     }
 
     // intake back
-    if(xbox.getTriggerAxis(Hand.kRight) > 0.2){
+    if(xbox.getTriggerAxis(Hand.kRight) > 0.2 && (turretFire.getSelectedSensorVelocity() - 682) < rpmFinal && (turretFire.getSelectedSensorVelocity() + 682) > rpmFinal){
       beltSecondaryMotor.set(1);
+      beltMotor.set(ControlMode.PercentOutput, 1);
+      beltTopMotor.set(ControlMode.PercentOutput, .5);
     } else {
       beltSecondaryMotor.set(0);
     }
@@ -527,64 +581,25 @@ public class Robot extends TimedRobot {
     } 
   }
 
-  // limelight scan class
-  public void limeRun(){
-    // init limelight values
-    NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
-    NetworkTableEntry tx = table.getEntry("tx");
-    NetworkTableEntry ty = table.getEntry("ty");
-    NetworkTableEntry ta = table.getEntry("ta");
-
-    // variables
-    double xVal = tx.getDouble(0.0);
-    double area = ta.getDouble(0.0);
-    boolean runCheck = true;
-    boolean areaCheck = false;
-
-    // checking to make sure the target exists
-    if(area > 0){
-      areaCheck = true;
-    }
-    // spin loop
-    if(areaCheck){
-      while(runCheck){
-        xVal = tx.getDouble(0.0);
-        if(xVal > 0.05 && xVal <= 0.2){
-          spinMotor.set(ControlMode.PercentOutput, .1);
-        } else if(xVal > 0.2){
-          spinMotor.set(ControlMode.PercentOutput, .4);
-        } else if(Math.abs(xVal) < 0.05){
-          spinMotor.set(ControlMode.PercentOutput, 0);
-          runCheck = false;
-        } else if(xVal < -0.05 && xVal >= -0.2){
-          spinMotor.set(ControlMode.PercentOutput, -.1);
-        } else if(xVal < -0.2){
-          spinMotor.set(ControlMode.PercentOutput, -.4);
-        }
-      }
-    }
-
-/* // I have no clue what any of this is so I'm commenting it out. - Nokes
-    // whinch + dpad set
-    int dpadA = xbox.getPOV();
-    int dpadI = 0;
-    if (dpadA == 0)   { dpadI = 1; }
-    if (dpadA == 90)  { dpadI = 2; }
-    if (dpadA == 180) { dpadI = 3; }
-    if (dpadA == 270) { dpadI = 4; }
-    if (dpadI == 1) { whinchMotor.set(ControlMode.PercentOutput, 0.5); }
-    // if (dpadI == 2) {}
-    if (dpadI == 3) { whinchMotor.set(ControlMode.PercentOutput, -0.5); }
-    // if (dpadI == 4) { fire = true; } <-- Will be fixed later to be used as an override if Limelight Fails - Dan
-    */
-  }
-
-  /**
-   * This function is called periodically during test mode.
-   */
+   private DoubleSolenoid.Value solenoidPrev = DoubleSolenoid.Value.kOff;
   @Override
   public void testPeriodic() {
-  System.out.println("My first code!");
+    if (xbox.getAButton()) {
+      shifter.set(Value.kForward);
+    } else {
+      shifter.set(Value.kReverse);
+    }
+    DoubleSolenoid.Value curr = shifter.get();
+    if (curr != solenoidPrev) {
+      System.out.println("Shifter is " + shifter.get());
+      solenoidPrev = curr;
+    }
   }
 
+  @Override
+  public void testInit() {
+    compressor.start();
+    compressor.setClosedLoopControl(true);
+  
+  }
 }
