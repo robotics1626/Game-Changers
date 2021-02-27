@@ -41,9 +41,9 @@ public class ActionRecorder
 	private StateButton upButton;
 	private StateButton downButton;
 	private StateButton recordButton;
-	private List<File> autoFileList;
+	private List<File> autoFileList = new ArrayList<File>();
 	private int autoFileIndex;
-	private File fileToRecord=new File(autoDirName + "/" + SmartDashboard.getString("DB/String 0", "new_auto.csv")); 
+	private File fileToRecord=new File(autoDirName + "/" + autoFileList.size() + SmartDashboard.getString("DB/String 0", "new_auto.csv"));
 	
 	// For timing accuracy measurements
 	
@@ -266,6 +266,7 @@ public class ActionRecorder
 	{
 		try
 		{
+			if(fileToRecord.exists())
 			System.out.println("WDI: <" + fileToRecord.getAbsolutePath() + ">");
 			BufferedWriter outFile= new BufferedWriter(new FileWriter(fileToRecord));
 			
@@ -326,6 +327,15 @@ public class ActionRecorder
 
 //		autoFileIndex=0;
 //		autoFileList.add(new File("/home/lvuser/auto", "new" + String.format("%03d.csv", newIdx)));
+		/*
+		for(Integer x = 0; x < autoFileList.size(); x++) {
+			if(autoFileList.get(x).toString().substring(0, 1) != x.toString()) {
+				File renamer = new File(x + autoFileList.get(x).toString().substring(1));
+				autoFileList.get(x).renameTo(renamer);
+			}
+		}
+		*/
+		
 		displayNames();
 	}
 
@@ -531,9 +541,9 @@ public class ActionRecorder
 		return autoFile;
 	}
 
-	public void autonomousInit(String fieldData)
+	public void autonomousInit(int fieldData)
 	{
-		File autoFile = autoFileList.get(autoFileIndex);
+		File autoFile = autoFileList.get(fieldData);
 		System.out.println("Entering autonomous init with " + autoFile.getAbsoluteFile());
 		if (autoFile.canRead())
 		{

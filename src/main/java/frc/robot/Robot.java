@@ -53,7 +53,8 @@ import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 
 public class Robot extends TimedRobot {
   private static final String kDefaultAuto = "Default";
-  private static final String kCustomAuto = "My Auto";
+  private static final String kCustomAuto = "Variant 2 Auto";
+  private static final String kVariant3 = "Variant 3 Auto";
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
   private long secondCheck;
@@ -91,12 +92,17 @@ public class Robot extends TimedRobot {
   private TalonSRX beltTopMotor;
   private SpeedController beltSecondaryMotor;
   private TalonFX winch;
+  private boolean triggerDisable;
+  private boolean axisDisable;
 
   // turret spinner
   private CANSparkMax spinMotor;
   private CANEncoder spinEncoder;
   private double spinPos;
   private double spinPos_Starter;
+  private boolean spinEmerg;
+  private boolean spinRunner;
+  private boolean turretRunner;
 
   // turret fire
   private NetworkTableEntry rpmSet;
@@ -118,8 +124,9 @@ public class Robot extends TimedRobot {
   private boolean fireCheck;
   private boolean limeToggle_Check;
 
-  // echo code declarations
+  // echo code / auton. declarations
   ActionRecorder actions;
+  boolean autoLoop;
 
   // defining color sensor variables
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
@@ -133,7 +140,8 @@ public class Robot extends TimedRobot {
   @Override
   public void robotInit() {
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
-    m_chooser.addOption("My Auto", kCustomAuto);
+    m_chooser.addOption("Variant 2 Auto", kCustomAuto);
+    m_chooser.addOption("Variant 3 Auto", kVariant3);
     SmartDashboard.putData("Auto choices", m_chooser);
 
     rpmSet = Shuffleboard.getTab("SmartDashboard").add("Initial", 4500)
@@ -163,7 +171,7 @@ public class Robot extends TimedRobot {
 
     // turret spinner
     spinMotor = new CANSparkMax(7, MotorType.kBrushless);
-    spinEncoder = new CANEncoder(spinMotor);
+    spinEncoder = spinMotor.getEncoder();
     spinPos_Starter = spinEncoder.getPosition();
 
     // turret fire
@@ -182,8 +190,8 @@ public class Robot extends TimedRobot {
     xbox = new XboxController(2);
 
     // current peaks
-    beltMotor.configPeakCurrentLimit(40, 6);
-    beltMotor.configContinuousCurrentLimit(40, 6);
+    beltMotor.configPeakCurrentLimit(20, 6);
+    beltMotor.configContinuousCurrentLimit(20, 6);
     beltMotor.enableCurrentLimit(true);
 
     // input declare for recording
@@ -246,6 +254,11 @@ public class Robot extends TimedRobot {
     toggleRT = true;
     limeToggle = false;
     limeToggle_Check = true;
+    axisDisable = true;
+    triggerDisable = true;
+    spinEmerg = true;
+    spinRunner = true;
+    turretRunner = true;
 
     ledEntry.setNumber(1);
 
@@ -259,6 +272,10 @@ public class Robot extends TimedRobot {
 		DriverInput.nameInput("Driver-Right");
 		DriverInput.nameInput("Driver-Left-Trigger");
     DriverInput.nameInput("Driver-Right-Trigger");
+    DriverInput.nameInput("Driver-Left-Seven");
+    DriverInput.nameInput("Driver-Right-Seven");
+    DriverInput.nameInput("Driver-Left-Intake");
+    DriverInput.nameInput("Driver-Right-Intake");
     DriverInput.nameInput("Driver-Intake-Arm");
 		DriverInput.nameInput("Operator-Left-Stick");
 		DriverInput.nameInput("Operator-Left-Bumper");
@@ -297,6 +314,16 @@ public class Robot extends TimedRobot {
     y = ty.getDouble(0.0);
     area = ta.getDouble(0.0);
 
+    // Motor Temps
+    double frT = frontRightSpeed.getTemperature();
+    double brT = backRightSpeed.getTemperature();
+    double flT = frontLeftSpeed.getTemperature();
+    double blT = backLeftSpeed.getTemperature();
+
+    SmartDashboard.putNumber("right temp",Math.max(frT,brT));
+    SmartDashboard.putNumber("left temp",Math.max(flT,blT));
+
+
     // pushing limelight vars
     SmartDashboard.putNumber("LimelightX", x);
     SmartDashboard.putNumber("LimelightY", y);
@@ -310,7 +337,8 @@ public class Robot extends TimedRobot {
     // turret RPM output
     SmartDashboard.putNumber("RPM Input", (rpmSet.getDouble(0.0)));
     if(rpmSet.getName() != null){
-      rpmFinal = (rpmSet.getDouble(0.0)) * 3.41;
+
+    
     }
 
     // defining color vars
@@ -353,17 +381,16 @@ public class Robot extends TimedRobot {
   @Override
   public void disabledPeriodic() {
     actions.disabledPeriodic();
-    ledEntry.setNumber(1);
   }
 
   @Override
   public void autonomousInit() {
     fireCheck = false;
     m_autoSelected = m_chooser.getSelected();
-    intakeButton.set(Value.kForward);
-    intakeButton2.set(Value.kForward);
+    intakeButton.set(Value.kReverse);
+    intakeButton2.set(Value.kReverse);
     secondCheck = System.currentTimeMillis();
-    actions.autonomousInit("");
+    autoLoop = true;
   }
 
   @Override
@@ -420,15 +447,39 @@ public class Robot extends TimedRobot {
       break;
     }
     */
-    try{
-			if (actions != null){
-				actions.longPlayback(this, -1);
-			}else{
-				Timer.delay(0.010);
-			}
-		}catch (Exception e){
-			System.out.println("AP: " + e.toString());
-		}
+    if(autoLoop) {
+      switch (m_autoSelected) {
+        case kCustomAuto: // variant 2
+          if(x < 0.0) actions.autonomousInit(0);
+          else actions.autonomousInit(1);
+          autoLoop = false;
+          break;
+        case kVariant3: // variant 3
+          autoLoop = false;
+          actions.autonomousInit(0);
+          break;
+        case kDefaultAuto: // runner for only one variant
+        default:
+          autoLoop = false;
+          actions.autonomousInit(1);
+          break; 
+      }
+      /* code to run before ball pickup goes here.
+       For now, this block does nothing.
+       Will update once we get the field up.
+       - Nokes
+       */
+    } else {
+      try{
+			  if (actions != null){
+				  actions.longPlayback(this, -1);
+			  }else{
+				  Timer.delay(0.010);
+			  }
+		  }catch (Exception e){
+			  System.out.println("AP: " + e.toString());
+		  }
+    }
   }
 
   @Override
@@ -449,13 +500,19 @@ public class Robot extends TimedRobot {
 					.withInput("Operator-Start-Button",	    xbox.getStartButton())
 					.withInput("Operator-Left-Trigger",  		xbox.getTriggerAxis(Hand.kLeft))
           .withInput("Operator-Right-Trigger",		xbox.getTriggerAxis(Hand.kRight))
+          .withInput("Operator-Left-Bumper",      xbox.getBumper(Hand.kLeft))
+          .withInput("Operator-Right-Bumper",     xbox.getBumper(Hand.kRight))
           .withInput("Operator-Right-Stick",      xbox.getY(Hand.kRight)) // y-axis only
+          .withInput("Operator-Start-Button",     xbox.getStartButton())
+          .withInput("Operator-Back-Button",      xbox.getBackButton())
 					.withInput("Driver-Left", 			        driverLeft.getRawAxis(1))
 					.withInput("Driver-Right", 			        driverRight.getRawAxis(1))
 					.withInput("Driver-Left-Trigger", 	    driverLeft.getRawButton(1))
           .withInput("Driver-Right-Trigger", 	    driverRight.getRawButton(1))
-          .withInput("Driver-Intake-Motor-Left",  driverLeft.getRawButton(2))
-          .withInput("Driver-Intake-Motor-Right", driverRight.getRawButton(2))
+          .withInput("Driver-Left-Intake", 	      driverLeft.getRawButton(2))
+          .withInput("Driver-Right-Intake", 	    driverRight.getRawButton(2))
+          .withInput("Driver-Left-Seven",         driverLeft.getRawButton(7))
+          .withInput("Driver-Right-Seven",        driverRight.getRawButton(7))
 					);					
 		} catch (IllegalAccessException e) {
 			e.printStackTrace();
@@ -592,6 +649,13 @@ public class Robot extends TimedRobot {
       backRightSpeed.set(ControlMode.PercentOutput, (0));
     }
     
+    // emergency button backwards
+    if(input.getButton("Driver-Right-Seven") || input.getButton("Driver-Left-Seven")) {
+      turretFire.set(ControlMode.PercentOutput, -.4);
+      beltTopMotor.set(ControlMode.PercentOutput, -1);
+      spinEmerg = false;
+    } else spinEmerg = true;
+
     // shifter set
     if((input.getButton("Driver-Left-Trigger") && toggleLT) || (input.getButton("Driver-Right-Trigger") && toggleRT)) {
       if(gearShift){
@@ -614,39 +678,35 @@ public class Robot extends TimedRobot {
     }
 
     // turret spin
-    if(input.getButton("Operator-Right-Bumper")){
-      if(spinPos > 0){
-        spinMotor.set(-.25);
-      }
-    } else if(input.getButton("Operator-Left-Bumper")){
-      if(spinPos < 348.3752){
-        spinMotor.set(.25);
-      }
-    } else {
-      spinMotor.set(0);
-    }
+    if(input.getButton("Operator-Right-Bumper") && spinPos > -10) spinMotor.set(-.25);
+    else if(input.getButton("Operator-Left-Bumper") && spinPos < 348.3752) spinMotor.set(.25);
+    else spinMotor.set(0);
 
     // belt + intake
-    if(input.getAxis("Operator-Right-Stick") > 0.2){
+    if(input.getAxis("Operator-Right-Stick") > .2){
       beltMotor.set(ControlMode.PercentOutput, -1); // in 
-      beltSecondaryMotor.set(-.4);
-    } else if(input.getAxis("Operator-Right-Stick") < 0.2){
+      beltTopMotor.set(ControlMode.PercentOutput, .8);
+      axisDisable = false;
+     } else if(input.getAxis("Operator-Right-Stick") < -.2){
       beltMotor.set(ControlMode.PercentOutput, 1); // out      
-      beltSecondaryMotor.set(.4);
+      beltTopMotor.set(ControlMode.PercentOutput, -.8);
+      axisDisable = false;
     } else {
-      beltMotor.set(ControlMode.PercentOutput, 0);
+      axisDisable = true;
     }
 
     // intake motor on top of the arm thingy
-    if(input.getButton("Driver-Intake-Motor-Left")){
+    if(input.getButton("Driver-Left-Intake")){
       intakeMotor.set(ControlMode.PercentOutput, -.8);
       beltTopMotor.set(ControlMode.PercentOutput, .8);
-    } else if(input.getButton("Driver-Intake-Motor-Right")){
+      spinRunner = false;
+    } else if(input.getButton("Driver-Right-Intake")){
       intakeMotor.set(ControlMode.PercentOutput, .8);
       beltTopMotor.set(ControlMode.PercentOutput, -.8);
+      spinRunner = false;
     } else {
       intakeMotor.set(ControlMode.PercentOutput, 0);
-      beltTopMotor.set(ControlMode.PercentOutput, 0);
+      spinRunner = true;
     }
 
     /*
@@ -687,10 +747,10 @@ public class Robot extends TimedRobot {
     */
 
     // turret position reset
-    if(xbox.getStartButton()) spinPos_Starter = spinEncoder.getPosition();
+    if(input.getButton("Operator-Start-Button")) spinPos_Starter = spinEncoder.getPosition();
 
     // limelight enable/disable
-    if(xbox.getBackButton() && limeToggle_Check) {
+    if(input.getButton("Operator-Back-Button") && limeToggle_Check) {
       if(limeToggle) limeToggle = false;
       else limeToggle = true;
       limeToggle_Check = false;
@@ -698,6 +758,7 @@ public class Robot extends TimedRobot {
 
     // limelight // turret fire
     if(input.getAxis("Operator-Left-Trigger") > 0.1){
+      turretRunner = false;
       if(turretFire_exception) turretFire.set(TalonFXControlMode.Velocity, rpmFinal);
       if(limeToggle) {
         ledEntry.setNumber(3);
@@ -715,7 +776,7 @@ public class Robot extends TimedRobot {
       }
     } else {
       ledEntry.setNumber(1);
-      if(turretFire_exception) turretFire.set(ControlMode.PercentOutput, 0);
+      turretRunner = true;
     }
 
     // intake shifters
@@ -734,6 +795,13 @@ public class Robot extends TimedRobot {
       intakeButton2.set(Value.kForward);
     }  
 
+
+    // emergency changes
+    if(spinEmerg && turretRunner) {
+      if(turretFire_exception) turretFire.set(ControlMode.PercentOutput, 0);
+    } if(spinEmerg && spinRunner) {
+      beltTopMotor.set(ControlMode.PercentOutput, 0);
+    }
     // winch updown
     if(input.getButton("Operator-X-Button")) {
       winch.set(ControlMode.PercentOutput, (-1));
@@ -751,7 +819,15 @@ public class Robot extends TimedRobot {
       beltSecondaryMotor.set(1);
       beltMotor.set(ControlMode.PercentOutput, 1);
       beltTopMotor.set(ControlMode.PercentOutput, .5);
+      turretRunner = false;
+      triggerDisable = false;
     } else {
+      turretRunner = true;
+      triggerDisable = true;
+    }
+
+    if(triggerDisable && axisDisable) {
+      beltMotor.set(ControlMode.PercentOutput, 0);
       beltSecondaryMotor.set(0);
     }
   }
