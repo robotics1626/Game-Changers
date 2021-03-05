@@ -56,7 +56,9 @@ public class Robot extends TimedRobot {
   private static final String kCustomAuto = "Variant 2 Auto";
   private static final String kVariant3 = "Variant 3 Auto";
   private String m_autoSelected;
+  private String x_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
+  private SendableChooser<String> x_chooser = new SendableChooser<>();
   private long secondCheck;
 
   // defining controllers
@@ -128,6 +130,12 @@ public class Robot extends TimedRobot {
   ActionRecorder actions;
   boolean autoLoop;
 
+  // dashboard drivetrain temperatures
+  double frT;
+  double brT;
+  double flT;
+  double blT;
+
   // defining color sensor variables
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
   private final ColorSensorV3 m_colorSensor = new ColorSensorV3(i2cPort);
@@ -143,6 +151,16 @@ public class Robot extends TimedRobot {
     m_chooser.addOption("Variant 2 Auto", kCustomAuto);
     m_chooser.addOption("Variant 3 Auto", kVariant3);
     SmartDashboard.putData("Auto choices", m_chooser);
+
+    try {
+      x_chooser.setDefaultOption(actions.fileName(0), "0");
+    for(Integer z = 0; z <= actions.fileCount(); z++) {
+      x_chooser.addOption(actions.fileName(0), z.toString());
+    }
+    SmartDashboard.putData("Auto Default Runner", x_chooser); // chooses which auto to run if using default.
+    } catch(Exception e) {
+      System.out.println("Bruh");
+    }
 
     rpmSet = Shuffleboard.getTab("SmartDashboard").add("Initial", 4500)
       .withWidget(BuiltInWidgets.kNumberSlider).withProperties(Map.of("min", 3500, "max", 6000, "block increment", 100)).getEntry();
@@ -262,6 +280,22 @@ public class Robot extends TimedRobot {
 
     ledEntry.setNumber(1);
 
+    // dashboard drivetrain temperatures
+    frT = 0.0;
+    brT = 0.0;
+    flT = 0.0;
+    blT = 0.0;
+
+    // AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    frontLeftSpeed.configForwardSoftLimitEnable(false);
+    frontLeftSpeed.configReverseSoftLimitEnable(false);
+    frontRightSpeed.configForwardSoftLimitEnable(false);
+    frontRightSpeed.configReverseSoftLimitEnable(false);
+    backLeftSpeed.configForwardSoftLimitEnable(false);
+    backLeftSpeed.configReverseSoftLimitEnable(false);
+    backRightSpeed.configForwardSoftLimitEnable(false);
+    backRightSpeed.configReverseSoftLimitEnable(false);
+
     actions = new ActionRecorder().
 				setMethod(this, "robotOperation", frc.robot.DriverInput.class).
 				setUpButton(xbox, 1).
@@ -315,14 +349,13 @@ public class Robot extends TimedRobot {
     area = ta.getDouble(0.0);
 
     // Motor Temps
-    double frT = frontRightSpeed.getTemperature();
-    double brT = backRightSpeed.getTemperature();
-    double flT = frontLeftSpeed.getTemperature();
-    double blT = backLeftSpeed.getTemperature();
+    if(frT < frontRightSpeed.getTemperature()) frT = frontRightSpeed.getTemperature();
+    if(brT < backRightSpeed.getTemperature()) brT = backRightSpeed.getTemperature();
+    if(flT < frontLeftSpeed.getTemperature()) flT = frontLeftSpeed.getTemperature();
+    if(blT < backLeftSpeed.getTemperature()) blT = backLeftSpeed.getTemperature();
 
-    SmartDashboard.putNumber("right temp",Math.max(frT,brT));
-    SmartDashboard.putNumber("left temp",Math.max(flT,blT));
-
+    SmartDashboard.putString("Right Temp.", ("F:" + frT + ", B:" + brT));
+    SmartDashboard.putString("Left Temp.", ("F:" + flT + ", B:" + blT));
 
     // pushing limelight vars
     SmartDashboard.putNumber("LimelightX", x);
@@ -387,88 +420,54 @@ public class Robot extends TimedRobot {
   public void autonomousInit() {
     fireCheck = false;
     m_autoSelected = m_chooser.getSelected();
+    x_autoSelected = x_chooser.getSelected();
     intakeButton.set(Value.kReverse);
     intakeButton2.set(Value.kReverse);
     secondCheck = System.currentTimeMillis();
     autoLoop = true;
+
+    // dashboard drivetrain temperatures
+    frT = 0.0;
+    brT = 0.0;
+    flT = 0.0;
+    blT = 0.0;
   }
 
   @Override
   public void autonomousPeriodic() {
-    /*
-    switch (m_autoSelected) {
-    case kCustomAuto:
-      // Put custom auto code here
-      break;
-    case kDefaultAuto:
-    default:
-      if(System.currentTimeMillis() - 1000 >= secondCheck){
-        if(spinPos < 175){
-          ledEntry.setNumber(1);
-          spinMotor.set(.5);
-        } else {
-          ledEntry.setNumber(3);
-          if(area > 0){
-            if(x > 1 && x <= 3){
-              if(spinPos < 332.3752) spinMotor.set(-.05);
-            } else if(x > 3){
-              if(spinPos < 332.3752) spinMotor.set(-.25);
-            } else if(Math.abs(x) < 1 && Math.abs(x) > 0.0){
-              spinMotor.set(0);
-              fireCheck = true;
-            } else if(x < -1 && x >= 3){
-              if(spinPos > 0) spinMotor.set(.05);                 
-            } else if(x < -3){
-              if(spinPos > 0) spinMotor.set(.25);
-            }
-          }
-        }
-      }
-
-      rpmFinal = 4500 * 3.41;
-      if(turretFire_exception) turretFire.set(TalonFXControlMode.Velocity, rpmFinal);
-
-      if(fireCheck){
-        beltSecondaryMotor.set(1);
-        beltMotor.set(ControlMode.PercentOutput, 1);
-        beltTopMotor.set(ControlMode.PercentOutput, .5);
-      } else {
-        beltSecondaryMotor.set(0);
-        beltMotor.set(ControlMode.PercentOutput, 0);
-        beltTopMotor.set(ControlMode.PercentOutput, 0);
-      }
-
-      if(System.currentTimeMillis() - 8000 < secondCheck && System.currentTimeMillis() - 11000 > secondCheck){
-        frontLeftSpeed.set(ControlMode.PercentOutput, .25);
-        backLeftSpeed.set(ControlMode.PercentOutput, .25);
-        frontRightSpeed.set(ControlMode.PercentOutput, -.25);
-        backRightSpeed.set(ControlMode.PercentOutput, -.25);
-      }
-      break;
-    }
-    */
     if(autoLoop) {
       switch (m_autoSelected) {
         case kCustomAuto: // variant 2
-          if(x < 0.0) actions.autonomousInit(0);
-          else actions.autonomousInit(1);
+          /*
+          Set to do the track dependant on ball location.
+          Program is done, but we still need the recordings.
+          - Nokes
+          */
+          if(x < 0.0) actions.autonomousInit(0, "");
+          else actions.autonomousInit(1, "");
           autoLoop = false;
           break;
         case kVariant3: // variant 3
+          /* 
+          Set up to run whatever is selected on the driverstation. 
+          Not currently functional; figuring out how to read
+          DB/String 0 - Nokes.
+
+          Update: I did it, it's probably wrong. As of
+          3/3/2021, this program hasn't been deployed yet.
+          I'm waiting for Mr. Meier to come over the weekend
+          so that if I did break it, I'll at least have someone
+          to help me fix it. - Nokes.
+          */
           autoLoop = false;
-          actions.autonomousInit(0);
+          actions.autonomousInit(-1, SmartDashboard.getString("DB/String 0", "new_auto.csv"));
           break;
         case kDefaultAuto: // runner for only one variant
         default:
           autoLoop = false;
-          actions.autonomousInit(1);
+          actions.autonomousInit(1, "");
           break; 
       }
-      /* code to run before ball pickup goes here.
-       For now, this block does nothing.
-       Will update once we get the field up.
-       - Nokes
-       */
     } else {
       try{
 			  if (actions != null){
@@ -486,6 +485,12 @@ public class Robot extends TimedRobot {
 	public void teleopInit() {
 		DriverInput.setRecordTime();
 		actions.teleopInit();
+    
+    // dashboard drivetrain temperatures
+    frT = 0.0;
+    brT = 0.0;
+    flT = 0.0;
+    blT = 0.0;
   }
   
   @Override

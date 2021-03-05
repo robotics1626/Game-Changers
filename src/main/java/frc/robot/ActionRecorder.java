@@ -92,6 +92,14 @@ public class ActionRecorder
 		
 	}
 
+	public int fileCount() {
+		return (autoFileList.size() - 1);
+	}
+
+	public String fileName(int counter) {
+		return autoFileList.get(counter).toString();
+	}
+
 	@SuppressWarnings("rawtypes")
 	private Method lookUpMethod(Object obj, String methodName, Class... args)
 	{
@@ -541,9 +549,11 @@ public class ActionRecorder
 		return autoFile;
 	}
 
-	public void autonomousInit(int fieldData)
+	public void autonomousInit(int fieldData, String stringData)
 	{
-		File autoFile = autoFileList.get(fieldData);
+		File autoFile = new File("N/A");
+		if(fieldData >= 0) autoFile = autoFileList.get(fieldData);
+		else for(File z : autoFileList) if(z.getName() == stringData) autoFile = z; 
 		System.out.println("Entering autonomous init with " + autoFile.getAbsoluteFile());
 		if (autoFile.canRead())
 		{
