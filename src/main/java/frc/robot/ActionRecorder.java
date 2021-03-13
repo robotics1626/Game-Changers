@@ -549,11 +549,29 @@ public class ActionRecorder
 		return autoFile;
 	}
 
+	public void listAll() {
+		for(File x : autoFileList) System.out.println(x.toString());
+	}
+
+	public String directoryPrefix() {
+		return autoDirName;
+	}
+
 	public void autonomousInit(int fieldData, String stringData)
 	{
 		File autoFile = new File("N/A");
-		if(fieldData >= 0) autoFile = autoFileList.get(fieldData);
-		else for(File z : autoFileList) if(z.getName() == stringData) autoFile = z; 
+		System.out.println("Begin autonomousInit(" + fieldData +", " + stringData + ")");
+		if(fieldData >= 0) {
+			autoFile = autoFileList.get(fieldData);
+		} else {
+			for(int x = 0; x < autoFileList.size(); x++) {
+				System.out.println("Checking <" +autoFileList.get(x).toString()  +">");
+				if(autoFileList.get(x).toString().equals(autoDirName + "/" + stringData)) {
+					System.out.println("Picked <" + autoFileList.get(x).toString() + ">");
+					autoFile = autoFileList.get(x); 
+				}
+			}
+		}
 		System.out.println("Entering autonomous init with " + autoFile.getAbsoluteFile());
 		if (autoFile.canRead())
 		{

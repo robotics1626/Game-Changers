@@ -56,9 +56,7 @@ public class Robot extends TimedRobot {
   private static final String kCustomAuto = "Variant 2 Auto";
   private static final String kVariant3 = "Variant 3 Auto";
   private String m_autoSelected;
-  private String x_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
-  private SendableChooser<String> x_chooser = new SendableChooser<>();
   private long secondCheck;
 
   // defining controllers
@@ -123,7 +121,6 @@ public class Robot extends TimedRobot {
   private double y = ty.getDouble(0.0);
   private double area = ta.getDouble(0.0);
   private boolean limeToggle;
-  private boolean fireCheck;
   private boolean limeToggle_Check;
 
   // echo code / auton. declarations
@@ -147,21 +144,16 @@ public class Robot extends TimedRobot {
 
   @Override
   public void robotInit() {
+    // sets up shuffleboard to have a box with autonomous choices. These auto choices
+    // are used in either autonomousInit() or autonomousPeriodic(), in a switch-case
+    // statement that pulls these lines.
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
     m_chooser.addOption("Variant 2 Auto", kCustomAuto);
     m_chooser.addOption("Variant 3 Auto", kVariant3);
     SmartDashboard.putData("Auto choices", m_chooser);
 
-    try {
-      x_chooser.setDefaultOption(actions.fileName(0), "0");
-    for(Integer z = 0; z <= actions.fileCount(); z++) {
-      x_chooser.addOption(actions.fileName(0), z.toString());
-    }
-    SmartDashboard.putData("Auto Default Runner", x_chooser); // chooses which auto to run if using default.
-    } catch(Exception e) {
-      System.out.println("Bruh");
-    }
-
+    // establishes an element on the shuffleboard that allows us to change 
+    // turret fire RPM on the fly.
     rpmSet = Shuffleboard.getTab("SmartDashboard").add("Initial", 4500)
       .withWidget(BuiltInWidgets.kNumberSlider).withProperties(Map.of("min", 3500, "max", 6000, "block increment", 100)).getEntry();
 
@@ -171,6 +163,7 @@ public class Robot extends TimedRobot {
     backLeftSpeed = new TalonFX(3);
     backRightSpeed = new TalonFX(4);
 
+    // motor setup for drive train
     frontLeftSpeed.setNeutralMode(NeutralMode.Coast);
     frontRightSpeed.setNeutralMode(NeutralMode.Coast);
     backLeftSpeed.setNeutralMode(NeutralMode.Coast);
@@ -212,13 +205,6 @@ public class Robot extends TimedRobot {
     beltMotor.configContinuousCurrentLimit(20, 6);
     beltMotor.enableCurrentLimit(true);
 
-    // input declare for recording
-    /*
-    DriverInput.nameInput("LDrive");
-    DriverInput.nameInput("RDrive");
-    DriverInput.nameInput("AButton");
-    */
-
     // pressure declares
     gearShift = true;
     intakeShift = true;
@@ -237,6 +223,8 @@ public class Robot extends TimedRobot {
     compressor.start();
 
     // turret RPM
+    // these values have been pre-established by other files and other sources.
+    // there is no reason to touch these values, so don't touch them.
     if(turretFire_exception) { 
       /* if statement exists because of the try-catch.
       Not sure if I need to do this, but better safe than
@@ -268,6 +256,8 @@ public class Robot extends TimedRobot {
     }
 
     // toggle declare = true;
+    // toggles are used to make sure that button-pressed
+    // one-time actions aren't spammed when run during robotOperation()
     toggleLT = true;
     toggleRT = true;
     limeToggle = false;
@@ -278,15 +268,19 @@ public class Robot extends TimedRobot {
     spinRunner = true;
     turretRunner = true;
 
+    // turns the limelight off.
     ledEntry.setNumber(1);
 
     // dashboard drivetrain temperatures
+    // sets them to 0 as a starting val, further updates
+    // in robotPeriodic().
     frT = 0.0;
     brT = 0.0;
     flT = 0.0;
     blT = 0.0;
 
-    // AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    // Limit removers, even though we never turned on limits. 
+    // Motors are stupid.
     frontLeftSpeed.configForwardSoftLimitEnable(false);
     frontLeftSpeed.configReverseSoftLimitEnable(false);
     frontRightSpeed.configForwardSoftLimitEnable(false);
@@ -418,13 +412,21 @@ public class Robot extends TimedRobot {
 
   @Override
   public void autonomousInit() {
-    fireCheck = false;
     m_autoSelected = m_chooser.getSelected();
-    x_autoSelected = x_chooser.getSelected();
     intakeButton.set(Value.kReverse);
     intakeButton2.set(Value.kReverse);
     secondCheck = System.currentTimeMillis();
     autoLoop = true;
+
+    // voltage limit (I think?)
+    frontLeftSpeed.configVoltageCompSaturation(10.0);
+    frontLeftSpeed.enableVoltageCompensation(true);
+    frontRightSpeed.configVoltageCompSaturation(10.0);
+    frontRightSpeed.enableVoltageCompensation(true);
+    backLeftSpeed.configVoltageCompSaturation(10.0);
+    backLeftSpeed.enableVoltageCompensation(true);
+    backRightSpeed.configVoltageCompSaturation(10.0);
+    backRightSpeed.enableVoltageCompensation(true);
 
     // dashboard drivetrain temperatures
     frT = 0.0;
@@ -485,6 +487,22 @@ public class Robot extends TimedRobot {
 	public void teleopInit() {
 		DriverInput.setRecordTime();
 		actions.teleopInit();
+
+    if(actions.isRecording()) {
+      frontLeftSpeed.configVoltageCompSaturation(10.0);
+      frontLeftSpeed.enableVoltageCompensation(true);
+      frontRightSpeed.configVoltageCompSaturation(10.0);
+      frontRightSpeed.enableVoltageCompensation(true);
+      backLeftSpeed.configVoltageCompSaturation(10.0);
+      backLeftSpeed.enableVoltageCompensation(true);
+      backRightSpeed.configVoltageCompSaturation(10.0);
+      backRightSpeed.enableVoltageCompensation(true);
+    } else {
+      frontLeftSpeed.enableVoltageCompensation(false);
+      frontRightSpeed.enableVoltageCompensation(false);
+      backLeftSpeed.enableVoltageCompensation(false);
+      backRightSpeed.enableVoltageCompensation(false);
+    }
     
     // dashboard drivetrain temperatures
     frT = 0.0;
@@ -527,7 +545,13 @@ public class Robot extends TimedRobot {
       e.printStackTrace();
     }
   }
-  
+
+  // granted that competitions seem like a no-no this year (2021)
+  // the ColorSense method doesn't link to any buttons or anything like that.
+  // It's commented out,  because I hate that stupid yellow
+  // line and I want it to go away. - Nokes
+
+  /*
   private void spin(final int ColorSense) {
     boolean colorLoop = true;
     int colorcount = 0;
@@ -598,10 +622,14 @@ public class Robot extends TimedRobot {
       }
     } 
   }
+  */
 
    private DoubleSolenoid.Value solenoidPrev = DoubleSolenoid.Value.kOff;
   @Override
   public void testPeriodic() {
+    System.out.println(actions.directoryPrefix() + SmartDashboard.getString("DB/String 0", "new_auto.csv"));
+    actions.listAll();
+
     if(xbox.getAButton()) {
       shifter.set(Value.kForward);
     } else {
@@ -620,8 +648,6 @@ public class Robot extends TimedRobot {
 
   @Override
   public void testInit() {
-
-
     compressor.start();
     compressor.setClosedLoopControl(true);
   }
