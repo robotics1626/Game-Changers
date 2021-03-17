@@ -364,8 +364,7 @@ public class Robot extends TimedRobot {
     // turret RPM output
     SmartDashboard.putNumber("RPM Input", (rpmSet.getDouble(0.0)));
     if(rpmSet.getName() != null){
-
-    
+      rpmFinal = rpmSet.getDouble(0.0);
     }
 
     // defining color vars
@@ -388,7 +387,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void disabledInit() {
-    if(turretFire_exception) turretFire.set(ControlMode.PercentOutput, 0);
+    if(turretFire_exception) turretFire.set(ControlMode.PercentOutput, (0));
     frontLeftSpeed.set(ControlMode.PercentOutput, 0);
     backLeftSpeed.set(ControlMode.PercentOutput, 0);
     frontRightSpeed.set(ControlMode.PercentOutput, 0);
@@ -684,6 +683,7 @@ public class Robot extends TimedRobot {
     if(input.getButton("Driver-Right-Seven") || input.getButton("Driver-Left-Seven")) {
       turretFire.set(ControlMode.PercentOutput, -.4);
       beltTopMotor.set(ControlMode.PercentOutput, -1);
+      beltSecondaryMotor.set(-1);
       spinEmerg = false;
     } else spinEmerg = true;
 
@@ -790,7 +790,7 @@ public class Robot extends TimedRobot {
     // limelight // turret fire
     if(input.getAxis("Operator-Left-Trigger") > 0.1){
       turretRunner = false;
-      if(turretFire_exception) turretFire.set(TalonFXControlMode.Velocity, rpmFinal);
+      if(turretFire_exception) turretFire.set(TalonFXControlMode.Velocity, (rpmFinal * 2048 / 600));
       if(limeToggle) {
         ledEntry.setNumber(3);
         if(x > 1 && x <= 3){
@@ -829,7 +829,7 @@ public class Robot extends TimedRobot {
 
     // emergency changes
     if(spinEmerg && turretRunner) {
-      if(turretFire_exception) turretFire.set(ControlMode.PercentOutput, 0);
+      if(turretFire_exception) turretFire.set(ControlMode.PercentOutput, (0));
     } if(spinEmerg && spinRunner) {
       beltTopMotor.set(ControlMode.PercentOutput, 0);
     }
@@ -846,7 +846,7 @@ public class Robot extends TimedRobot {
     }
 
     // intake back
-    if(input.getAxis("Operator-Right-Trigger") > 0.2 && (turretFire.getSelectedSensorVelocity() - 682) < rpmFinal && (turretFire.getSelectedSensorVelocity() + 682) > rpmFinal){
+    if(input.getAxis("Operator-Right-Trigger") > 0.2 && (turretFire.getSelectedSensorVelocity() - 2000) < (rpmFinal * 2048 / 600) && (turretFire.getSelectedSensorVelocity() + 2000) > (rpmFinal * 2048 / 600)){
       beltSecondaryMotor.set(1);
       beltMotor.set(ControlMode.PercentOutput, 1);
       beltTopMotor.set(ControlMode.PercentOutput, .5);
@@ -857,9 +857,7 @@ public class Robot extends TimedRobot {
       triggerDisable = true;
     }
 
-    if(triggerDisable && axisDisable) {
-      beltMotor.set(ControlMode.PercentOutput, 0);
-      beltSecondaryMotor.set(0);
-    }
+    if(spinEmerg && axisDisable) { beltSecondaryMotor.set(0); }
+    if(triggerDisable && axisDisable) { beltMotor.set(ControlMode.PercentOutput, 0); }
   }
 }
