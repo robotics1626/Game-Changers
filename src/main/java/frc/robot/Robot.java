@@ -629,6 +629,9 @@ public class Robot extends TimedRobot {
     System.out.println(actions.directoryPrefix() + SmartDashboard.getString("DB/String 0", "new_auto.csv"));
     actions.listAll();
 
+    if(xbox.getXButton()) { ledEntry.setNumber(3); }
+    else { ledEntry.setNumber(1); }
+
     if(xbox.getAButton()) {
       shifter.set(Value.kForward);
     } else {
@@ -641,8 +644,6 @@ public class Robot extends TimedRobot {
     }
 
     limeToggle = handleLimeButton(7);
-
-    ledEntry.setNumber(limeToggle? 3 : 1);
   }
 
   @Override
@@ -709,8 +710,8 @@ public class Robot extends TimedRobot {
     }
 
     // turret spin
-    if(input.getButton("Operator-Right-Bumper") && spinPos > -10) spinMotor.set(-.25);
-    else if(input.getButton("Operator-Left-Bumper") && spinPos < 348.3752) spinMotor.set(.25);
+    if(input.getButton("Operator-Right-Bumper") && spinPos > -10) spinMotor.set(-.5);
+    else if(input.getButton("Operator-Left-Bumper") && spinPos < 348.3752) spinMotor.set(.5);
     else spinMotor.set(0);
 
     // belt + intake
@@ -793,17 +794,8 @@ public class Robot extends TimedRobot {
       if(turretFire_exception) turretFire.set(TalonFXControlMode.Velocity, (rpmFinal * 2048 / 600));
       if(limeToggle) {
         ledEntry.setNumber(3);
-        if(x > 1 && x <= 3){
-          if(spinPos < 332.3752) spinMotor.set(-.05);
-        } else if(x > 3){
-          if(spinPos < 332.3752) spinMotor.set(-.25);
-        } else if(Math.abs(x) < 1 && Math.abs(x) > 0.0){
-          spinMotor.set(0);
-        } else if(x < -1 && x >= -3){
-          if(spinPos > 0) spinMotor.set(.05);                 
-        } else if(x < -3){
-          if(spinPos > 0) spinMotor.set(.25);
-        }
+        if(x < 0.0 && x > -2.0) { spinMotor.set(0); }
+        else { spinMotor.set(-.01 * (x + 1.0)); }
       }
     } else {
       ledEntry.setNumber(1);
@@ -857,7 +849,7 @@ public class Robot extends TimedRobot {
       triggerDisable = true;
     }
 
-    if(spinEmerg && axisDisable) { beltSecondaryMotor.set(0); }
+    if(spinEmerg && axisDisable && triggerDisable) { beltSecondaryMotor.set(0); }
     if(triggerDisable && axisDisable) { beltMotor.set(ControlMode.PercentOutput, 0); }
   }
 }
