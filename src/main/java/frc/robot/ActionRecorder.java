@@ -550,7 +550,11 @@ public class ActionRecorder
 	}
 
 	public void listAll() {
-		for(File x : autoFileList) System.out.println(x.toString());
+		int y = 0;
+		for(File x : autoFileList) {
+			System.out.println(x.toString() + " at index value " + y);
+			y++;
+		}
 	}
 
 	public String directoryPrefix() {

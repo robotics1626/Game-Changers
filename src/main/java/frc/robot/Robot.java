@@ -103,12 +103,14 @@ public class Robot extends TimedRobot {
   private boolean spinEmerg;
   private boolean spinRunner;
   private boolean turretRunner;
+  private double double_turretCounter = 0.0;
 
   // turret fire
   private NetworkTableEntry rpmSet;
   private TalonFX turretFire;
   private double rpmFinal;
   private boolean turretFire_exception = true;
+  private boolean bool_fireVariant = false;
 
   // defining Limelight Variables
   NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
@@ -122,6 +124,10 @@ public class Robot extends TimedRobot {
   private double area = ta.getDouble(0.0);
   private boolean limeToggle;
   private boolean limeToggle_Check;
+  private double distance_toTarget;
+  private double[] desiredTargetDistance = {10.602,14.900, 11.315, 13.9628};
+  private double distanceSubtractor = Double.MAX_VALUE;
+  private int arrayHolder = 0;
 
   // echo code / auton. declarations
   ActionRecorder actions;
@@ -301,7 +307,11 @@ public class Robot extends TimedRobot {
 		DriverInput.nameInput("Driver-Left-Trigger");
     DriverInput.nameInput("Driver-Right-Trigger");
     DriverInput.nameInput("Driver-Left-Seven");
+    DriverInput.nameInput("Driver-Left-Eight");
+    DriverInput.nameInput("Driver-Left-Nine");
     DriverInput.nameInput("Driver-Right-Seven");
+    DriverInput.nameInput("Driver-Right-Eight");
+    DriverInput.nameInput("Driver-Right-Nine");
     DriverInput.nameInput("Driver-Left-Intake");
     DriverInput.nameInput("Driver-Right-Intake");
     DriverInput.nameInput("Driver-Intake-Arm");
@@ -341,6 +351,17 @@ public class Robot extends TimedRobot {
     x = tx.getDouble(0.0);
     y = ty.getDouble(0.0);
     area = ta.getDouble(0.0);
+    distance_toTarget = Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
+    if(true) {
+      for(int n = 0; n < desiredTargetDistance.length; n++) {
+        if(Math.abs(desiredTargetDistance[n] - distance_toTarget) < distanceSubtractor) {
+          distanceSubtractor = Math.abs(desiredTargetDistance[n] - distance_toTarget);
+          arrayHolder = n;
+        }
+      }
+      distanceSubtractor = Double.MAX_VALUE;
+      System.out.println(arrayHolder);
+    }
 
     // Motor Temps
     if(frT < frontRightSpeed.getTemperature()) frT = frontRightSpeed.getTemperature();
@@ -444,8 +465,20 @@ public class Robot extends TimedRobot {
           Program is done, but we still need the recordings.
           - Nokes
           */
-          if(x < 0.0) actions.autonomousInit(0, "");
-          else actions.autonomousInit(1, "");
+          switch (arrayHolder) {
+            case 0: // red A
+              actions.autonomousInit(12, "");
+              break;
+            case 1: // red B
+              actions.autonomousInit(14, "");
+              break;
+            case 2: // blue A
+              actions.autonomousInit(0, "");
+              break;
+            case 3: // blue B
+              actions.autonomousInit(1, "");
+              break;
+          }
           autoLoop = false;
           break;
         case kVariant3: // variant 3
@@ -535,6 +568,10 @@ public class Robot extends TimedRobot {
           .withInput("Driver-Right-Intake", 	    driverRight.getRawButton(2))
           .withInput("Driver-Left-Seven",         driverLeft.getRawButton(7))
           .withInput("Driver-Right-Seven",        driverRight.getRawButton(7))
+          .withInput("Driver-Left-Eight",         driverLeft.getRawButton(8))
+          .withInput("Driver-Right-Eight",        driverRight.getRawButton(8))
+          .withInput("Driver-Left-Nine",          driverLeft.getRawButton(9))
+          .withInput("Driver-Right-Nine",         driverRight.getRawButton(9))
 					);					
 		} catch (IllegalAccessException e) {
 			e.printStackTrace();
@@ -709,10 +746,21 @@ public class Robot extends TimedRobot {
       shifter.set(Value.kForward);
     }
 
+    // RPM variants
+    if(input.getButton("Driver-Left-Eight") || input.getButton("Driver-Right-Eight")) { bool_fireVariant = false; }
+    if(input.getButton("Driver-Left-Nine") || input.getButton("Driver-Right-Nine")) { bool_fireVariant = true; }
+
     // turret spin
-    if(input.getButton("Operator-Right-Bumper") && spinPos > -10) spinMotor.set(-.5);
-    else if(input.getButton("Operator-Left-Bumper") && spinPos < 348.3752) spinMotor.set(.5);
-    else spinMotor.set(0);
+    if(input.getButton("Operator-Right-Bumper") && spinPos > -10) {
+      spinMotor.set((-.1 - (.003 * double_turretCounter)));
+      double_turretCounter++;
+    } else if(input.getButton("Operator-Left-Bumper") && spinPos < 348.3752) {
+      spinMotor.set((.1 + (.003 * double_turretCounter)));
+      double_turretCounter++;
+    } else { 
+      double_turretCounter = 0;
+      spinMotor.set(0);
+    }
 
     // belt + intake
     if(input.getAxis("Operator-Right-Stick") > .2){
@@ -791,8 +839,14 @@ public class Robot extends TimedRobot {
     // limelight // turret fire
     if(input.getAxis("Operator-Left-Trigger") > 0.1){
       turretRunner = false;
-      if(turretFire_exception) turretFire.set(TalonFXControlMode.Velocity, (rpmFinal * 2048 / 600));
-      if(limeToggle) {
+      if(turretFire_exception) { 
+        if(bool_fireVariant) {
+          if(area > 1.4 && area < 2.3) { turretFire.set(TalonFXControlMode.Velocity, (4710 * 2048 / 600)); }
+          else if(area > 0.8 && area < 1.4) { turretFire.set(TalonFXControlMode.Velocity, (4400 * 2048 / 600)); }
+          else if(area > 0.5 && area < 0.8) { turretFire.set(TalonFXControlMode.Velocity, (4590 * 2048 / 600)); }
+          else { turretFire.set(TalonFXControlMode.Velocity, (5400 * 2048 / 600)); }
+        } else { turretFire.set(TalonFXControlMode.Velocity, (rpmFinal * 2048 / 600)); }
+      } if(limeToggle) {
         ledEntry.setNumber(3);
         if(x < 0.0 && x > -2.0) { spinMotor.set(0); }
         else { spinMotor.set(-.01 * (x + 1.0)); }
@@ -838,7 +892,7 @@ public class Robot extends TimedRobot {
     }
 
     // intake back
-    if(input.getAxis("Operator-Right-Trigger") > 0.2 && (turretFire.getSelectedSensorVelocity() - 2000) < (rpmFinal * 2048 / 600) && (turretFire.getSelectedSensorVelocity() + 2000) > (rpmFinal * 2048 / 600)){
+    if(input.getAxis("Operator-Right-Trigger") > 0.2 && (((turretFire.getSelectedSensorVelocity() - 2000) < (rpmFinal * 2048 / 600) && (turretFire.getSelectedSensorVelocity() + 2000) > (rpmFinal * 2048 / 600)) || bool_fireVariant)){
       beltSecondaryMotor.set(1);
       beltMotor.set(ControlMode.PercentOutput, 1);
       beltTopMotor.set(ControlMode.PercentOutput, .5);
