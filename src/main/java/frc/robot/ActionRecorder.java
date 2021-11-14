@@ -8,14 +8,17 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+
+/* unused imports
+import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+*/
 
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.Joystick;
@@ -38,9 +41,9 @@ public class ActionRecorder
 	private StateButton upButton;
 	private StateButton downButton;
 	private StateButton recordButton;
-	private List<File> autoFileList;
+	private List<File> autoFileList = new ArrayList<File>();
 	private int autoFileIndex;
-	private File fileToRecord=new File(autoDirName + "/" + SmartDashboard.getString("DB/String 0", "new_auto.csv")); 
+	private File fileToRecord=new File(autoDirName + "/" + autoFileList.size() + SmartDashboard.getString("DB/String 0", "new_auto.csv"));
 	
 	// For timing accuracy measurements
 	
@@ -89,6 +92,14 @@ public class ActionRecorder
 		
 	}
 
+	public int fileCount() {
+		return (autoFileList.size() - 1);
+	}
+
+	public String fileName(int counter) {
+		return autoFileList.get(counter).toString();
+	}
+
 	@SuppressWarnings("rawtypes")
 	private Method lookUpMethod(Object obj, String methodName, Class... args)
 	{
@@ -134,9 +145,9 @@ public class ActionRecorder
 		downButton=new StateButton(stick, down);
 		return this;
 	}
-	public ActionRecorder setRecordButton(XboxController stick, int rec)
+	public ActionRecorder setRecordButton(XboxController button, int rec)
 	{
-		recordButton=new StateButton(stick, rec);
+		recordButton=new StateButton(button, rec);
 		return this;
 	}
 
@@ -263,6 +274,7 @@ public class ActionRecorder
 	{
 		try
 		{
+			if(fileToRecord.exists())
 			System.out.println("WDI: <" + fileToRecord.getAbsolutePath() + ">");
 			BufferedWriter outFile= new BufferedWriter(new FileWriter(fileToRecord));
 			
@@ -323,6 +335,15 @@ public class ActionRecorder
 
 //		autoFileIndex=0;
 //		autoFileList.add(new File("/home/lvuser/auto", "new" + String.format("%03d.csv", newIdx)));
+		/*
+		for(Integer x = 0; x < autoFileList.size(); x++) {
+			if(autoFileList.get(x).toString().substring(0, 1) != x.toString()) {
+				File renamer = new File(x + autoFileList.get(x).toString().substring(1));
+				autoFileList.get(x).renameTo(renamer);
+			}
+		}
+		*/
+		
 		displayNames();
 	}
 
@@ -528,9 +549,33 @@ public class ActionRecorder
 		return autoFile;
 	}
 
-	public void autonomousInit(String fieldData)
+	public void listAll() {
+		int y = 0;
+		for(File x : autoFileList) {
+			System.out.println(x.toString() + " at index value " + y);
+			y++;
+		}
+	}
+
+	public String directoryPrefix() {
+		return autoDirName;
+	}
+
+	public void autonomousInit(int fieldData, String stringData)
 	{
-		File autoFile = autoFileList.get(autoFileIndex);
+		File autoFile = new File("N/A");
+		System.out.println("Begin autonomousInit(" + fieldData +", " + stringData + ")");
+		if(fieldData >= 0) {
+			autoFile = autoFileList.get(fieldData);
+		} else {
+			for(int x = 0; x < autoFileList.size(); x++) {
+				System.out.println("Checking <" +autoFileList.get(x).toString()  +">");
+				if(autoFileList.get(x).toString().equals(autoDirName + "/" + stringData)) {
+					System.out.println("Picked <" + autoFileList.get(x).toString() + ">");
+					autoFile = autoFileList.get(x); 
+				}
+			}
+		}
 		System.out.println("Entering autonomous init with " + autoFile.getAbsoluteFile());
 		if (autoFile.canRead())
 		{
